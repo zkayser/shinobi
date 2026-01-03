@@ -17,6 +17,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let (len, addr) = socket.recv_from(&mut buf).await?;
     println!("Received {} bytes from {}", len, addr);
+    println!("Data: {:?}", &buf[..len]);
 
     Ok(())
 }
