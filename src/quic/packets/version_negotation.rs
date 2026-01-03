@@ -1,4 +1,6 @@
 use crate::quic::packet::ByteVector;
+use bytes::Bytes;
+use thiserror::Error;
 
 pub struct VersionNegotiationPacket {
     version: u32,
@@ -18,6 +20,27 @@ impl Default for VersionNegotiationPacket {
     }
 }
 
+#[derive(Error, Debug)]
+enum PacketError {
+    #[error("Packet is too short")]
+    BufferTooShort,
+    #[error("Not a long header packet")]
+    NotLongHeader,
+    #[error("Not a version negotiation packet (version != 0)")]
+    NotVersionNegotiation,
+}
+
+impl VersionNegotiationPacket {
+    fn decode(mut buf: Bytes) -> Result<VersionNegotiationPacket, PacketError> {
+        if buf.len() < 7 {
+            return Err(PacketError::BufferTooShort)
+        }
+        
+        // Decoding logic to be implemented
+        return Ok(VersionNegotiationPacket::default());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -29,5 +52,14 @@ mod tests {
         assert_eq!(packet.destination_connection_id.len(), 0);
         assert_eq!(packet.source_connection_id.len(), 0);
         assert_eq!(packet.supported_version, 1);
+    }
+
+    #[test]
+    fn test_decode_too_short() {
+        let buf = Bytes::from_static(&[0u8; 5]);
+        assert!(matches!(
+            VersionNegotiationPacket::decode(buf),
+            Err(PacketError::BufferTooShort)
+        ));
     }
 }
