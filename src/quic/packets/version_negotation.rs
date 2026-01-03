@@ -40,6 +40,11 @@ impl VersionNegotiationPacket {
         if header_byte & 0x80 == 0 {
             return Err(PacketError::NotLongHeader)
         }
+
+        let version = buf.get_u32();
+        if version != 0 {
+            return Err(PacketError::NotVersionNegotiation)
+        }
         
         // Decoding logic to be implemented
         return Ok(VersionNegotiationPacket::default());
