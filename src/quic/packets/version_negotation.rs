@@ -78,4 +78,13 @@ mod tests {
             Err(PacketError::NotLongHeader)
         ));
     }
+
+    #[test]
+    fn test_decode_not_version_negotiation() {
+        let buf = Bytes::from_static(&[0x80u8, 0, 0, 0, 1, 0, 0, 0, 0]);
+        assert!(matches!(
+            VersionNegotiationPacket::decode(buf),
+            Err(PacketError::NotVersionNegotiation)
+        ));
+    }
 }
