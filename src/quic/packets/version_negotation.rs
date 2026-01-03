@@ -1,5 +1,5 @@
 use crate::quic::packet::ByteVector;
-use bytes::Bytes;
+use bytes::{Buf, Bytes};
 use thiserror::Error;
 
 pub struct VersionNegotiationPacket {
@@ -35,6 +35,11 @@ impl VersionNegotiationPacket {
         if buf.len() < 7 {
             return Err(PacketError::BufferTooShort)
         }
+
+        let header_byte = buf.get_u8();
+        if header_byte & 0x80 == 0 {
+            return Err(PacketError::NotLongHeader)
+        }
         
         // Decoding logic to be implemented
         return Ok(VersionNegotiationPacket::default());
@@ -43,6 +48,8 @@ impl VersionNegotiationPacket {
 
 #[cfg(test)]
 mod tests {
+    use bytes::buf;
+
     use super::*;
 
     #[test]
@@ -60,6 +67,15 @@ mod tests {
         assert!(matches!(
             VersionNegotiationPacket::decode(buf),
             Err(PacketError::BufferTooShort)
+        ));
+    }
+
+    #[test]
+    fn test_decode_not_long_header() {
+        let buf = Bytes::from_static(&[0x7Fu8; 10]);
+        assert!(matches!(
+            VersionNegotiationPacket::decode(buf),
+            Err(PacketError::NotLongHeader)
         ));
     }
 }
