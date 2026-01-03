@@ -1,3 +1,5 @@
+mod quic;
+
 use std::error::Error;
 use tokio::net::UdpSocket;
 
