@@ -26,7 +26,7 @@ struct LongHeader {
     // follows it. This length is encoded as an 8-bit unsigned integer. In QUIC version 1, this value MUST NOT
     // exceed 20 bytes. Endpoints that receive a version 1 long header with a value larger than 20 MUST drop the
     // packet. In order to properly form a Version Negotiation packet, servers SHOULD be able to read longer connection IDs
-    // from other QUIC versions. 
+    // from other QUIC versions.
     destination_connection_id_length: u8,
     // The Destination Connection ID field follows the Destination Connection ID Length field, which indicates
     // the length of this field. This field is described in more detail [here](https://www.rfc-editor.org/rfc/rfc9000.html#negotiating-connection-ids)
@@ -73,5 +73,5 @@ mod tests {
         assert_eq!(long_header.destination_connection_id.len(), 8);
         assert_eq!(long_header.source_connection_id.len(), 8);
         assert_eq!(long_header.type_specific_payload.len(), 0);
-        }
     }
+}

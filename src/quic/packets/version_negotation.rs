@@ -33,19 +33,19 @@ enum PacketError {
 impl VersionNegotiationPacket {
     fn decode(mut buf: Bytes) -> Result<VersionNegotiationPacket, PacketError> {
         if buf.len() < 7 {
-            return Err(PacketError::BufferTooShort)
+            return Err(PacketError::BufferTooShort);
         }
 
         let header_byte = buf.get_u8();
         if header_byte & 0x80 == 0 {
-            return Err(PacketError::NotLongHeader)
+            return Err(PacketError::NotLongHeader);
         }
 
         let version = buf.get_u32();
         if version != 0 {
-            return Err(PacketError::NotVersionNegotiation)
+            return Err(PacketError::NotVersionNegotiation);
         }
-        
+
         // Decoding logic to be implemented
         return Ok(VersionNegotiationPacket::default());
     }
