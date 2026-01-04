@@ -13,8 +13,8 @@ impl Default for VersionNegotiationPacket {
     fn default() -> Self {
         VersionNegotiationPacket {
             version: 0_u32,
-            destination_connection_id: Bytes::from(vec![]),
-            source_connection_id: Bytes::from(vec![]),
+            destination_connection_id: Bytes::new(),
+            source_connection_id: Bytes::new(),
             supported_version: 1_u32,
         }
     }
