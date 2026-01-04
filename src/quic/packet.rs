@@ -1,4 +1,5 @@
-pub(crate) type ByteVector = Vec<u8>;
+#![allow(dead_code)]
+use bytes::Bytes;
 
 enum PacketType {
     Initial = 0x00,
@@ -30,7 +31,7 @@ struct LongHeader {
     destination_connection_id_length: u8,
     // The Destination Connection ID field follows the Destination Connection ID Length field, which indicates
     // the length of this field. This field is described in more detail [here](https://www.rfc-editor.org/rfc/rfc9000.html#negotiating-connection-ids)
-    destination_connection_id: ByteVector,
+    destination_connection_id: Bytes,
     // The byte following the Destination Connection ID contains the lenght in bytes of the Source Connection ID field that
     // follows it. This length is encoded as an 8-bit unsigned integer. In QUIC version 1, this value MUST NOT exceed
     // 20 bytes. Endpoints that receive a version 1 long header with a value larger than 20 MUST drop the packet. In order
@@ -39,9 +40,9 @@ struct LongHeader {
     source_connection_id_length: u8,
     // The Source Connection ID field follows the Source Connection ID Length field, which indicates the length of this field.
     // This field is described in more detail in Section 7.2 of RFC 9000 (link above).
-    source_connection_id: ByteVector,
+    source_connection_id: Bytes,
     // The remainder of the packet, if any, is type specific.
-    type_specific_payload: ByteVector,
+    type_specific_payload: Bytes,
 }
 
 #[cfg(test)]
@@ -57,10 +58,10 @@ mod tests {
             type_specific_bits: 0x0,
             version: 1,
             destination_connection_id_length: 8,
-            destination_connection_id: vec![0; 8],
+            destination_connection_id: Bytes::from(vec![0; 8]),
             source_connection_id_length: 8,
-            source_connection_id: vec![0; 8],
-            type_specific_payload: vec![],
+            source_connection_id: Bytes::from(vec![0; 8]),
+            type_specific_payload: Bytes::from(vec![]),
         };
 
         assert_eq!(long_header.header_form & 0x80, 0x80);

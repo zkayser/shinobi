@@ -1,21 +1,21 @@
-use crate::quic::packet::ByteVector;
+#![allow(dead_code)]
 use bytes::{Buf, Bytes};
 use thiserror::Error;
 
 pub struct VersionNegotiationPacket {
     version: u32,
-    destination_connection_id: ByteVector,
-    source_connection_id: ByteVector,
+    destination_connection_id: Bytes,
+    source_connection_id: Bytes,
     supported_version: u32,
 }
 
 impl Default for VersionNegotiationPacket {
     fn default() -> Self {
         VersionNegotiationPacket {
-            version: 0 as u32,
-            destination_connection_id: vec![],
-            source_connection_id: vec![],
-            supported_version: 1 as u32,
+            version: 0_u32,
+            destination_connection_id: Bytes::from(vec![]),
+            source_connection_id: Bytes::from(vec![]),
+            supported_version: 1_u32,
         }
     }
 }
@@ -47,14 +47,12 @@ impl VersionNegotiationPacket {
         }
 
         // Decoding logic to be implemented
-        return Ok(VersionNegotiationPacket::default());
+        Ok(VersionNegotiationPacket::default())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use bytes::buf;
-
     use super::*;
 
     #[test]
