@@ -2,11 +2,12 @@
 use bytes::{Buf, Bytes};
 use thiserror::Error;
 
+#[derive(Debug)]
 pub struct VersionNegotiationPacket {
     version: u32,
     destination_connection_id: Bytes,
     source_connection_id: Bytes,
-    supported_version: u32,
+    supported_version: Vec<u32>,
 }
 
 impl Default for VersionNegotiationPacket {
@@ -15,7 +16,7 @@ impl Default for VersionNegotiationPacket {
             version: 0_u32,
             destination_connection_id: Bytes::new(),
             source_connection_id: Bytes::new(),
-            supported_version: 1_u32,
+            supported_version: vec![1_u32],
         }
     }
 }
@@ -45,15 +46,32 @@ impl VersionNegotiationPacket {
         if version != 0 {
             return Err(PacketError::NotVersionNegotiation);
         }
+        let destination_connection_id_length = buf.get_u8();
+        let destination_connection_id =
+            buf.copy_to_bytes(destination_connection_id_length as usize);
+        let source_connection_id_length = buf.get_u8();
+        let source_connection_id = buf.copy_to_bytes(source_connection_id_length as usize);
+        let remainder = buf.remaining();
+        let mut supported_versions = Vec::<u32>::new();
+        for _ in 0..(remainder / 4) {
+            let ver = buf.get_u32();
+            supported_versions.push(ver);
+        }
 
         // Decoding logic to be implemented
-        Ok(VersionNegotiationPacket::default())
+        Ok(VersionNegotiationPacket {
+            version,
+            destination_connection_id,
+            source_connection_id,
+            supported_version: supported_versions,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::{BufMut, BytesMut};
 
     #[test]
     fn default_implementation() {
@@ -61,7 +79,7 @@ mod tests {
         assert_eq!(packet.version, 0);
         assert_eq!(packet.destination_connection_id.len(), 0);
         assert_eq!(packet.source_connection_id.len(), 0);
-        assert_eq!(packet.supported_version, 1);
+        assert_eq!(packet.supported_version, vec![1_u32]);
     }
 
     #[test]
@@ -89,5 +107,24 @@ mod tests {
             VersionNegotiationPacket::decode(buf),
             Err(PacketError::NotVersionNegotiation)
         ));
+    }
+
+    #[test]
+    fn test_decodes_valid_vn_packet() {
+        let mut buf = BytesMut::with_capacity(1024);
+        buf.put_u8(0x80_u8);
+        buf.put_u32(0_u32);
+        buf.put_u8(8_u8);
+        buf.put(&b"\x01\x02\x03\x04\x05\x06\x07\x08"[..]);
+        buf.put_u8(8_u8);
+        buf.put(&b"\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10"[..]);
+        buf.put_u32(1_u32);
+        buf.put_u32(2_u32);
+
+        let packet = VersionNegotiationPacket::decode(buf.freeze()).unwrap();
+        assert_eq!(packet.version, 0);
+        assert_eq!(packet.destination_connection_id.len(), 8);
+        assert_eq!(packet.source_connection_id.len(), 8);
+        assert_eq!(packet.supported_version, vec![1_u32, 2_u32]);
     }
 }
