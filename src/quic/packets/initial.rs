@@ -23,8 +23,12 @@ pub struct InitialPacket {
 impl InitialPacket {
     fn decode(mut buf: Bytes) -> Result<InitialPacket, PacketError> {
         let header_byte = buf.get_u8();
-        if header_byte & 0b1100000 != 0b11000000 {
+        if header_byte & 0b11000000 != 0b11000000 {
             return Err(PacketError::InvalidPacketHeader);
+        }
+
+        if header_byte & 0b00110000 != 0b00110000 {
+            return Err(PacketError::NotInitialPacket);
         }
 
         Ok(InitialPacket {
@@ -48,6 +52,15 @@ mod tests {
         assert!(matches!(
             InitialPacket::decode(buf),
             Err(PacketError::InvalidPacketHeader)
+        ));
+    }
+
+    #[test]
+    fn test_returns_not_initial_packet_error_when_not_initial() {
+        let buf = Bytes::from_static(&[0b11010000, 0, 0, 0, 1]);
+        assert!(matches!(
+            InitialPacket::decode(buf),
+            Err(PacketError::NotInitialPacket)
         ));
     }
 }
