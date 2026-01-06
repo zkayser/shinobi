@@ -111,4 +111,11 @@ mod tests {
         let bytes = Bytes::from_static(&[0b10111111, 0b11111111]); // Prefix 10 indicates 4-byte length
         assert!(read(&mut bytes.clone()).is_none());
     }
+
+    #[test]
+    fn test_returns_none_when_provided_insufficient_bytes_given_eight_byte_prefix() {
+        let bytes =
+            Bytes::from_static(&[0b11111111, 0b11111111, 0b11111111, 0b11111111, 0b11111111]); // Prefix 11 indicates 8-byte length
+        assert!(read(&mut bytes.clone()).is_none());
+    }
 }
