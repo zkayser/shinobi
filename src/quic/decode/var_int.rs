@@ -10,7 +10,7 @@ pub enum VarInt {
 
 const MASK: u8 = 0b00111111;
 
-pub fn read(buf: &mut Bytes) -> Option<VarInt> {
+pub(crate) fn read(buf: &mut Bytes) -> Option<VarInt> {
     let first_byte = buf.get_u8();
     let prefix = first_byte >> 6;
     let length = 1 << prefix;
