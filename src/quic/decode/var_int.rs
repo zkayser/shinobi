@@ -88,4 +88,15 @@ mod tests {
             panic!("Expected FourBytes variant");
         };
     }
+
+    #[test]
+    fn test_read_var_int_eight_bytes_length() {
+        // the eight-byte sequence 0xc2197c5eff14e88c decodes to the decimal value 151,288,809,941,952,652
+        let bytes = Bytes::from_static(&[0xc2, 0x19, 0x7c, 0x5e, 0xff, 0x14, 0xe8, 0x8c]);
+        if let Some(VarInt::EightBytes(value)) = read(&mut bytes.clone()) {
+            assert_eq!(value, 151_288_809_941_952_652);
+        } else {
+            panic!("Expected EightBytes variant");
+        };
+    }
 }
