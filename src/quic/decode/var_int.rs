@@ -55,6 +55,9 @@ mod tests {
     use super::*;
     use bytes::Bytes;
 
+    // Test examples are based on some examples in Sample Variable-length Integer Decoding section of RFC 9000,
+    // Appendix A.1 https://www.rfc-editor.org/rfc/rfc9000.html#section-a.1
+
     #[test]
     fn test_read_var_int_one_byte_length() {
         let bytes = Bytes::from_static(&[0x25]);
@@ -62,6 +65,16 @@ mod tests {
             assert_eq!(value, 37);
         } else {
             panic!("Expected OneByte variant");
+        };
+    }
+
+    #[test]
+    fn test_read_var_int_two_bytes_length() {
+        let bytes = Bytes::from_static(&[0x7b, 0xbd]);
+        if let Some(VarInt::TwoBytes(value)) = read(&mut bytes.clone()) {
+            assert_eq!(value, 15293);
+        } else {
+            panic!("Expected TwoBytes variant");
         };
     }
 }
