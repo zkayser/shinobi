@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use crate::quic::decode::var_int;
 use bytes::{Buf, Bytes};
 use thiserror::Error;
 
@@ -10,6 +11,8 @@ enum PacketError {
     InvalidPacketHeader,
     #[error("Buffer too short")]
     BufferTooShort,
+    #[error("Invalid variable length integer encoding")]
+    InvalidVarInt,
 }
 
 #[derive(Debug)]
@@ -66,25 +69,30 @@ impl InitialPacket {
         }
         let source_connection_id = buf.copy_to_bytes(scid_len);
 
-        let token_len = get_variable_length_integer(&mut buf)? as usize;
-        if buf.remaining() < token_len {
+        let Some(token_length) = var_int::read(&mut buf) else {
+            return Err(PacketError::InvalidVarInt);
+        };
+
+        if buf.remaining() < token_length as usize {
             return Err(PacketError::BufferTooShort);
         }
-        let token = buf.copy_to_bytes(token_len);
+        let token = buf.copy_to_bytes(token_length as usize);
 
-        let length = get_variable_length_integer(&mut buf)? as usize;
-        if buf.remaining() < length {
+        let Some(length) = var_int::read(&mut buf) else {
+            return Err(PacketError::InvalidVarInt);
+        };
+        if buf.remaining() < length as usize {
             return Err(PacketError::BufferTooShort);
         }
 
-        let pn_len = (header_byte & 0x03) as usize + 1;
-        if length < pn_len {
+        let packet_number_length = header_byte & 0b00000011;
+        if length < (packet_number_length as u64) {
             return Err(PacketError::InvalidPacketHeader);
         }
 
-        let mut content = buf.copy_to_bytes(length);
+        let mut content = buf.copy_to_bytes(length as usize);
 
-        let packet_number = content.copy_to_bytes(pn_len);
+        let packet_number = content.copy_to_bytes(packet_number_length as usize);
         let packet_payload = content;
 
         Ok(InitialPacket {
@@ -96,34 +104,6 @@ impl InitialPacket {
             packet_payload,
         })
     }
-}
-
-fn get_variable_length_integer(buf: &mut Bytes) -> Result<u64, PacketError> {
-    if !buf.has_remaining() {
-        return Err(PacketError::BufferTooShort);
-    }
-    let first = buf[0];
-    let prefix = first >> 6;
-    let length = match prefix {
-        0 => 1,
-        1 => 2,
-        2 => 4,
-        3 => 8,
-        _ => unreachable!(),
-    };
-
-    if buf.remaining() < length {
-        return Err(PacketError::BufferTooShort);
-    }
-
-    let val = match prefix {
-        0 => u64::from(buf.get_u8()),
-        1 => u64::from(buf.get_u16()) & 0x3FFF,
-        2 => u64::from(buf.get_u32()) & 0x3FFFFFFF,
-        3 => buf.get_u64() & 0x3FFFFFFFFFFFFFFF,
-        _ => unreachable!(),
-    };
-    Ok(val)
 }
 
 #[cfg(test)]
@@ -153,7 +133,7 @@ mod tests {
     #[test]
     fn test_decodes_valid_initial_packet() {
         let mut buf = BytesMut::new();
-        buf.put_u8(0xC0);
+        buf.put_u8(0xC1); // Header byte: 11000001 -- header and reserved bits set, plus packet number length set to 1 byte
         buf.put_u32(1);
         buf.put_u8(0);
         buf.put_u8(0);
