@@ -77,4 +77,15 @@ mod tests {
             panic!("Expected TwoBytes variant");
         };
     }
+
+    #[test]
+    fn test_read_var_int_four_bytes_length() {
+        // the four-byte sequence 0x9d7f3e7d decodes to 494,878,333
+        let bytes = Bytes::from_static(&[0x9d, 0x7f, 0x3e, 0x7d]);
+        if let Some(VarInt::FourBytes(value)) = read(&mut bytes.clone()) {
+            assert_eq!(value, 494_878_333);
+        } else {
+            panic!("Expected FourBytes variant");
+        };
+    }
 }
