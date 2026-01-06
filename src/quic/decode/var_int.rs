@@ -99,4 +99,10 @@ mod tests {
             panic!("Expected EightBytes variant");
         };
     }
+
+    #[test]
+    fn test_returns_none_when_provided_prefix_01_but_insufficient_bytes() {
+        let bytes = Bytes::from_static(&[0b01111111]); // Prefix 01 indicates 2-byte length
+        assert!(read(&mut bytes.clone()).is_none());
+    }
 }
