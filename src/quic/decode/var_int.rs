@@ -1,34 +1,27 @@
 #![allow(dead_code)]
 use bytes::{Buf, Bytes};
 
-pub enum VarInt {
-    OneByte(u8),
-    TwoBytes(u16),
-    FourBytes(u32),
-    EightBytes(u64),
-}
-
 const MASK: u8 = 0b00111111;
 
-pub(crate) fn read(buf: &mut Bytes) -> Option<VarInt> {
+pub(crate) fn read(buf: &mut Bytes) -> Option<u64> {
     let first_byte = buf.get_u8();
     let prefix = first_byte >> 6;
     let length = 1 << prefix;
     match length {
-        1 => Some(VarInt::OneByte(first_byte & MASK)),
+        1 => Some((first_byte & MASK) as u64),
         2 => {
             if buf.remaining() < 1 {
                 return None;
             }
             let bytes: [u8; 2] = [first_byte & MASK, buf.get_u8()];
-            Some(VarInt::TwoBytes(u16::from_be_bytes(bytes)))
+            Some(u16::from_be_bytes(bytes) as u64)
         }
         4 => {
             if buf.remaining() < 3 {
                 return None;
             }
             let bytes: [u8; 4] = [first_byte & MASK, buf.get_u8(), buf.get_u8(), buf.get_u8()];
-            Some(VarInt::FourBytes(u32::from_be_bytes(bytes)))
+            Some(u32::from_be_bytes(bytes) as u64)
         }
         8 => {
             if buf.remaining() < 7 {
@@ -44,7 +37,7 @@ pub(crate) fn read(buf: &mut Bytes) -> Option<VarInt> {
                 buf.get_u8(),
                 buf.get_u8(),
             ];
-            Some(VarInt::EightBytes(u64::from_be_bytes(bytes)))
+            Some(u64::from_be_bytes(bytes))
         }
         _ => None,
     }
@@ -61,7 +54,7 @@ mod tests {
     #[test]
     fn test_read_var_int_one_byte_length() {
         let bytes = Bytes::from_static(&[0x25]);
-        if let Some(VarInt::OneByte(value)) = read(&mut bytes.clone()) {
+        if let Some(value) = read(&mut bytes.clone()) {
             assert_eq!(value, 37);
         } else {
             panic!("Expected OneByte variant");
@@ -71,7 +64,7 @@ mod tests {
     #[test]
     fn test_read_var_int_two_bytes_length() {
         let bytes = Bytes::from_static(&[0x7b, 0xbd]);
-        if let Some(VarInt::TwoBytes(value)) = read(&mut bytes.clone()) {
+        if let Some(value) = read(&mut bytes.clone()) {
             assert_eq!(value, 15293);
         } else {
             panic!("Expected TwoBytes variant");
@@ -82,7 +75,7 @@ mod tests {
     fn test_read_var_int_four_bytes_length() {
         // the four-byte sequence 0x9d7f3e7d decodes to 494,878,333
         let bytes = Bytes::from_static(&[0x9d, 0x7f, 0x3e, 0x7d]);
-        if let Some(VarInt::FourBytes(value)) = read(&mut bytes.clone()) {
+        if let Some(value) = read(&mut bytes.clone()) {
             assert_eq!(value, 494_878_333);
         } else {
             panic!("Expected FourBytes variant");
@@ -93,7 +86,7 @@ mod tests {
     fn test_read_var_int_eight_bytes_length() {
         // the eight-byte sequence 0xc2197c5eff14e88c decodes to the decimal value 151,288,809,941,952,652
         let bytes = Bytes::from_static(&[0xc2, 0x19, 0x7c, 0x5e, 0xff, 0x14, 0xe8, 0x8c]);
-        if let Some(VarInt::EightBytes(value)) = read(&mut bytes.clone()) {
+        if let Some(value) = read(&mut bytes.clone()) {
             assert_eq!(value, 151_288_809_941_952_652);
         } else {
             panic!("Expected EightBytes variant");
