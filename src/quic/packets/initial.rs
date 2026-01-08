@@ -93,7 +93,8 @@ impl InitialPacket {
         let mut content = buf.copy_to_bytes(length as usize);
 
         let packet_number = content.copy_to_bytes(packet_number_length as usize);
-        let packet_payload = content;
+        let packet_payload =
+            content.copy_to_bytes((length - (packet_number_length as u64)) as usize);
 
         Ok(InitialPacket {
             version,
