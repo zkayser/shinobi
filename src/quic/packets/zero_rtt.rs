@@ -63,3 +63,19 @@ impl ZeroRttPacket {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // use bytes::BufMut;
+    // use bytes::BytesMut;
+
+    #[test]
+    fn test_returns_invalid_packet_header_when_header_is_not_0rtt() {
+        let buf = Bytes::from_static(&[0b01000000, 0, 0, 0, 1]);
+        assert!(matches!(
+            ZeroRttPacket::decode(buf),
+            Err(PacketError::InvalidPacketHeader)
+        ));
+    }
+}
