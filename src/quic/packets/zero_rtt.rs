@@ -78,4 +78,13 @@ mod tests {
             Err(PacketError::InvalidPacketHeader)
         ));
     }
+
+    #[test]
+    fn test_returns_buffer_too_short_when_buffer_is_empty() {
+        let buf = Bytes::from_static(&[]);
+        assert!(matches!(
+            ZeroRttPacket::decode(buf),
+            Err(PacketError::BufferTooShort)
+        ));
+    }
 }
