@@ -67,8 +67,8 @@ impl ZeroRttPacket {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // use bytes::BufMut;
-    // use bytes::BytesMut;
+    use bytes::BufMut;
+    use bytes::BytesMut;
 
     #[test]
     fn test_returns_invalid_packet_header_when_header_is_not_0rtt() {
@@ -86,5 +86,32 @@ mod tests {
             ZeroRttPacket::decode(buf),
             Err(PacketError::BufferTooShort)
         ));
+    }
+
+    #[test]
+    fn test_returns_zero_rtt_struct_when_packet_is_valid() {
+        let mut buf = BytesMut::new();
+        buf.put_u8(0b11010001); // Header byte with 0-RTT and packet number length 2
+        buf.put_u32(1); // Version
+        buf.put_u8(4); // destination connection ID length
+        buf.put(&b"\x01\x02\x03\x04"[..]); // destination connection ID
+        buf.put_u8(4); // source connection ID length
+        buf.put(&b"\x05\x06\x07\x08"[..]); // source connection ID
+        buf.put_u8(6); // length --> 6 bytes remaining, two for packet number, four for payload
+        buf.put(&b"\x09\x0A"[..]); // packet number
+        buf.put(&b"PING"[..]);
+
+        let packet = ZeroRttPacket::decode(buf.freeze()).unwrap();
+        assert_eq!(packet.version, 1);
+        assert_eq!(
+            packet.destination_connection_id,
+            Bytes::from(&b"\x01\x02\x03\x04"[..])
+        );
+        assert_eq!(
+            packet.source_connection_id,
+            Bytes::from(&b"\x05\x06\x07\x08"[..])
+        );
+        assert_eq!(packet.packet_number, Bytes::from(&b"\x09\x0A"[..]));
+        assert_eq!(packet.packet_payload, Bytes::from(&b"PING"[..]));
     }
 }
