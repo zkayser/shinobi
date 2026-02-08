@@ -1,6 +1,6 @@
 #![allow(dead_code)]
+use super::{Decode, PacketError};
 use bytes::{Buf, Bytes};
-use thiserror::Error;
 
 #[derive(Debug)]
 pub struct VersionNegotiationPacket {
@@ -21,17 +21,7 @@ impl Default for VersionNegotiationPacket {
     }
 }
 
-#[derive(Error, Debug)]
-enum PacketError {
-    #[error("Packet is too short")]
-    BufferTooShort,
-    #[error("Not a long header packet")]
-    NotLongHeader,
-    #[error("Not a version negotiation packet (version != 0)")]
-    NotVersionNegotiation,
-}
-
-impl VersionNegotiationPacket {
+impl Decode for VersionNegotiationPacket {
     fn decode(mut buf: Bytes) -> Result<VersionNegotiationPacket, PacketError> {
         if buf.len() < 7 {
             return Err(PacketError::BufferTooShort);
@@ -39,12 +29,12 @@ impl VersionNegotiationPacket {
 
         let header_byte = buf.get_u8();
         if header_byte & 0x80 == 0 {
-            return Err(PacketError::NotLongHeader);
+            return Err(PacketError::InvalidPacketHeader);
         }
 
         let version = buf.get_u32();
         if version != 0 {
-            return Err(PacketError::NotVersionNegotiation);
+            return Err(PacketError::UnexpectedPacketType);
         }
         let destination_connection_id_length = buf.get_u8();
         let destination_connection_id =
@@ -58,7 +48,6 @@ impl VersionNegotiationPacket {
             supported_versions.push(ver);
         }
 
-        // Decoding logic to be implemented
         Ok(VersionNegotiationPacket {
             version,
             destination_connection_id,
@@ -96,7 +85,7 @@ mod tests {
         let buf = Bytes::from_static(&[0x7Fu8; 10]);
         assert!(matches!(
             VersionNegotiationPacket::decode(buf),
-            Err(PacketError::NotLongHeader)
+            Err(PacketError::InvalidPacketHeader)
         ));
     }
 
@@ -105,7 +94,7 @@ mod tests {
         let buf = Bytes::from_static(&[0x80u8, 0, 0, 0, 1, 0, 0, 0, 0]);
         assert!(matches!(
             VersionNegotiationPacket::decode(buf),
-            Err(PacketError::NotVersionNegotiation)
+            Err(PacketError::UnexpectedPacketType)
         ));
     }
 
