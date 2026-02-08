@@ -78,4 +78,13 @@ mod tests {
             Err(PacketError::InvalidPacketHeader)
         ));
     }
+
+    #[test]
+    fn test_returns_buffer_too_short_when_not_sufficient_length() {
+        let buf = Bytes::from_static(&[]);
+        assert!(matches!(
+            HandshakePacket::decode(buf),
+            Err(PacketError::BufferTooShort)
+        ));
+    }
 }
