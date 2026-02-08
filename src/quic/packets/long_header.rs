@@ -27,6 +27,13 @@ pub enum LongHeaderPacket {
         packet_number: Bytes,
         packet_payload: Bytes,
     },
+    Retry {
+        version: u32,
+        destination_connection_id: Bytes,
+        source_connection_id: Bytes,
+        retry_token: Bytes,
+        retry_integrity_tag: Bytes,
+    },
 }
 
 const LONG_HEADER_FORM: u8 = 0x80;
@@ -37,6 +44,9 @@ const PACKET_NUMBER_LENGTH_MASK: u8 = 0x03;
 const PACKET_TYPE_INITIAL: u8 = 0x00;
 const PACKET_TYPE_ZERO_RTT: u8 = 0x10;
 const PACKET_TYPE_HANDSHAKE: u8 = 0x20;
+const PACKET_TYPE_RETRY: u8 = 0x30;
+
+const RETRY_INTEGRITY_TAG_LENGTH: usize = 16;
 
 impl Decode for LongHeaderPacket {
     fn decode(mut buf: Bytes) -> Result<Self, PacketError> {
@@ -84,6 +94,25 @@ impl Decode for LongHeaderPacket {
         }
         let source_connection_id = buf.copy_to_bytes(scid_len);
 
+        // Retry packets have no length or packet number fields;
+        // the remainder is a Retry Token followed by a 16-byte integrity tag.
+        if packet_type == PACKET_TYPE_RETRY {
+            if buf.remaining() < RETRY_INTEGRITY_TAG_LENGTH {
+                return Err(PacketError::BufferTooShort);
+            }
+            let token_len = buf.remaining() - RETRY_INTEGRITY_TAG_LENGTH;
+            let retry_token = buf.copy_to_bytes(token_len);
+            let retry_integrity_tag = buf.copy_to_bytes(RETRY_INTEGRITY_TAG_LENGTH);
+            return Ok(LongHeaderPacket::Retry {
+                version,
+                destination_connection_id,
+                source_connection_id,
+                retry_token,
+                retry_integrity_tag,
+            });
+        }
+
+        // Initial packets have a token field before the length
         let token = if packet_type == PACKET_TYPE_INITIAL {
             let Some(token_length) = var_int::read(&mut buf) else {
                 return Err(PacketError::InvalidVarInt);
@@ -171,19 +200,79 @@ mod tests {
     }
 
     #[test]
-    fn test_returns_unexpected_packet_type_for_retry() {
+    fn test_retry_returns_buffer_too_short_when_no_integrity_tag() {
         let mut buf = BytesMut::new();
-        buf.put_u8(0b11110000);
-        buf.put_u32(1);
-        buf.put_u8(0);
-        buf.put_u8(0);
-        buf.put_u8(1);
-        buf.put_u8(0);
+        buf.put_u8(0b11110000); // Retry packet type
+        buf.put_u32(1); // version
+        buf.put_u8(0); // DCID length
+        buf.put_u8(0); // SCID length
+        // Only 10 bytes remaining, need at least 16 for integrity tag
+        buf.put(&[0u8; 10][..]);
 
         assert!(matches!(
             LongHeaderPacket::decode(buf.freeze()),
-            Err(PacketError::UnexpectedPacketType)
+            Err(PacketError::BufferTooShort)
         ));
+    }
+
+    #[test]
+    fn test_decodes_valid_retry_packet_with_empty_token() {
+        let mut buf = BytesMut::new();
+        buf.put_u8(0b11110000); // Retry: long header + fixed bit + type 0x03
+        buf.put_u32(1); // version
+        buf.put_u8(4); // DCID length
+        buf.put(&b"\x01\x02\x03\x04"[..]);
+        buf.put_u8(4); // SCID length
+        buf.put(&b"\x05\x06\x07\x08"[..]);
+        // No retry token, just 16-byte integrity tag
+        buf.put(&[0xAA; 16][..]);
+
+        let packet = LongHeaderPacket::decode(buf.freeze()).unwrap();
+        match packet {
+            LongHeaderPacket::Retry {
+                version,
+                destination_connection_id,
+                source_connection_id,
+                retry_token,
+                retry_integrity_tag,
+            } => {
+                assert_eq!(version, 1);
+                assert_eq!(
+                    destination_connection_id,
+                    Bytes::from(&b"\x01\x02\x03\x04"[..])
+                );
+                assert_eq!(source_connection_id, Bytes::from(&b"\x05\x06\x07\x08"[..]));
+                assert_eq!(retry_token.len(), 0);
+                assert_eq!(retry_integrity_tag, Bytes::from(&[0xAA; 16][..]));
+            }
+            _ => panic!("Expected Retry variant"),
+        }
+    }
+
+    #[test]
+    fn test_decodes_valid_retry_packet_with_token() {
+        let mut buf = BytesMut::new();
+        buf.put_u8(0b11110000); // Retry
+        buf.put_u32(1); // version
+        buf.put_u8(0); // DCID length
+        buf.put_u8(0); // SCID length
+        buf.put(&b"my-retry-token"[..]); // 14-byte retry token
+        buf.put(&[0xBB; 16][..]); // 16-byte integrity tag
+
+        let packet = LongHeaderPacket::decode(buf.freeze()).unwrap();
+        match packet {
+            LongHeaderPacket::Retry {
+                version,
+                retry_token,
+                retry_integrity_tag,
+                ..
+            } => {
+                assert_eq!(version, 1);
+                assert_eq!(retry_token, Bytes::from_static(b"my-retry-token"));
+                assert_eq!(retry_integrity_tag, Bytes::from(&[0xBB; 16][..]));
+            }
+            _ => panic!("Expected Retry variant"),
+        }
     }
 
     #[test]
