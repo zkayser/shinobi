@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::quic::decode::var_int;
 use bytes::{Buf, Bytes};
 use thiserror::Error;
