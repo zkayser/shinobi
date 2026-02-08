@@ -87,4 +87,31 @@ mod tests {
             Err(PacketError::BufferTooShort)
         ));
     }
+
+    #[test]
+    fn test_returns_handshake_packet_when_buffer_is_valid_packet() {
+        let mut buf = BytesMut::new();
+        buf.put_u8(0b11100001);
+        buf.put_u32(1);
+        buf.put_u8(4);
+        buf.put(&b"\x01\x02\x03\x04"[..]);
+        buf.put_u8(4);
+        buf.put(&b"\x05\x06\x07\x08"[..]);
+        buf.put_u8(6);
+        buf.put(&b"\x09\x0A"[..]);
+        buf.put(&b"PING"[..]);
+
+        let packet = HandshakePacket::decode(buf.freeze()).unwrap();
+        assert_eq!(packet.version, 1);
+        assert_eq!(
+            packet.destination_connection_id,
+            Bytes::from(&b"\x01\x02\x03\x04"[..])
+        );
+        assert_eq!(
+            packet.source_connection_id,
+            Bytes::from(&b"\x05\x06\x07\x08"[..])
+        );
+        assert_eq!(packet.packet_number, Bytes::from(&b"\x09\x0A"[..]));
+        assert_eq!(packet.packet_payload, Bytes::from(&b"PING"[..]));
+    }
 }
