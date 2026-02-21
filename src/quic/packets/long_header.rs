@@ -94,8 +94,6 @@ impl Decode for LongHeaderPacket {
         }
         let source_connection_id = buf.copy_to_bytes(scid_len);
 
-        // Retry packets have no length or packet number fields;
-        // the remainder is a Retry Token followed by a 16-byte integrity tag.
         if packet_type == PACKET_TYPE_RETRY {
             if buf.remaining() < RETRY_INTEGRITY_TAG_LENGTH {
                 return Err(PacketError::BufferTooShort);
@@ -112,7 +110,6 @@ impl Decode for LongHeaderPacket {
             });
         }
 
-        // Initial packets have a token field before the length
         let token = if packet_type == PACKET_TYPE_INITIAL {
             let Some(token_length) = var_int::read(&mut buf) else {
                 return Err(PacketError::InvalidVarInt);
