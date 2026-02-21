@@ -16,10 +16,6 @@ const FIXED_BIT: u8 = 0x40;
 const PACKET_NUMBER_LENGTH_MASK: u8 = 0x03;
 
 impl ShortHeaderPacket {
-    /// Decode a 1-RTT Short Header packet.
-    ///
-    /// `dcid_len` is the expected Destination Connection ID length, which must
-    /// be known from prior handshake negotiation (RFC 9000 Section 17.3).
     pub fn decode(mut buf: Bytes, dcid_len: usize) -> Result<Self, PacketError> {
         if buf.is_empty() {
             return Err(PacketError::BufferTooShort);
@@ -27,11 +23,9 @@ impl ShortHeaderPacket {
 
         let first_byte = buf.get_u8();
 
-        // Header Form bit must be 0 for short headers
         if first_byte & HEADER_FORM_BIT != 0 {
             return Err(PacketError::InvalidPacketHeader);
         }
-        // Fixed bit must be 1
         if first_byte & FIXED_BIT == 0 {
             return Err(PacketError::InvalidPacketHeader);
         }
@@ -108,7 +102,6 @@ mod tests {
         let mut buf = BytesMut::new();
         buf.put_u8(0b01000001); // pn_len = 2
         buf.put(&[0u8; 4][..]); // 4-byte DCID
-        // No bytes left for packet number
 
         assert!(matches!(
             ShortHeaderPacket::decode(buf.freeze(), 4),
@@ -122,7 +115,6 @@ mod tests {
         buf.put_u8(0b01000000); // pn_len = 1
         buf.put(&[0u8; 4][..]); // 4-byte DCID
         buf.put_u8(0x01); // 1-byte packet number
-        // No payload bytes
 
         assert!(matches!(
             ShortHeaderPacket::decode(buf.freeze(), 4),
@@ -153,24 +145,25 @@ mod tests {
     fn test_preserves_header_bits() {
         let mut buf = BytesMut::new();
         // 0b01111100: spin=1, reserved=11, key_phase=1, pn_len=1
-        buf.put_u8(0b01111100);
+        let first_byte = 0b01111100;
+        buf.put_u8(first_byte);
         buf.put(&b"\xAA\xBB"[..]); // 2-byte DCID
         buf.put_u8(0x42); // 1-byte packet number
         buf.put(&b"DATA"[..]); // payload
 
         let packet = ShortHeaderPacket::decode(buf.freeze(), 2).unwrap();
-        assert_eq!(packet.first_byte, 0b01111100);
-        assert_eq!(packet.first_byte & 0x20, 0x20); // spin bit set
-        assert_eq!(packet.first_byte & 0x18, 0x18); // reserved bits set
-        assert_eq!(packet.first_byte & 0x04, 0x04); // key phase set
+        assert_eq!(packet.first_byte, first_byte);
+        assert_eq!(packet.first_byte & 0x20, 0x20);
+        assert_eq!(packet.first_byte & 0x18, 0x18);
+        assert_eq!(packet.first_byte & 0x04, 0x04);
     }
 
     #[test]
     fn test_decodes_with_zero_length_dcid() {
         let mut buf = BytesMut::new();
-        buf.put_u8(0b01000000); // pn_len = 1
-        buf.put_u8(0x01); // 1-byte packet number
-        buf.put(&b"HELLO"[..]); // payload
+        buf.put_u8(0b01000000);
+        buf.put_u8(0x01);
+        buf.put(&b"HELLO"[..]);
 
         let packet = ShortHeaderPacket::decode(buf.freeze(), 0).unwrap();
         assert_eq!(packet.destination_connection_id.len(), 0);
@@ -181,11 +174,10 @@ mod tests {
     #[test]
     fn test_decodes_with_four_byte_packet_number() {
         let mut buf = BytesMut::new();
-        // 0b01000011: pn_len = 4
         buf.put_u8(0b01000011);
-        buf.put(&b"\x01\x02\x03\x04"[..]); // 4-byte DCID
-        buf.put(&b"\x00\x01\x00\x01"[..]); // 4-byte packet number
-        buf.put(&b"X"[..]); // minimal payload
+        buf.put(&b"\x01\x02\x03\x04"[..]);
+        buf.put(&b"\x00\x01\x00\x01"[..]);
+        buf.put(&b"X"[..]);
 
         let packet = ShortHeaderPacket::decode(buf.freeze(), 4).unwrap();
         assert_eq!(packet.packet_number, Bytes::from(&b"\x00\x01\x00\x01"[..]));
