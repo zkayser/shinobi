@@ -1,0 +1,217 @@
+#![allow(dead_code)]
+use super::PacketError;
+use bytes::{Buf, Bytes};
+
+/// A 1-RTT Short Header packet per RFC 9000 Section 17.3.
+///
+/// Short header packets are used after the handshake completes. Unlike long
+/// header packets, they omit the version and source connection ID. The
+/// destination connection ID length is not encoded in the packet; it must be
+/// known from the connection context.
+#[derive(Debug)]
+pub struct ShortHeaderPacket {
+    pub spin_bit: bool,
+    pub key_phase: bool,
+    pub destination_connection_id: Bytes,
+    pub packet_number: Bytes,
+    pub packet_payload: Bytes,
+}
+
+const HEADER_FORM_BIT: u8 = 0x80;
+const FIXED_BIT: u8 = 0x40;
+const SPIN_BIT: u8 = 0x20;
+const KEY_PHASE_BIT: u8 = 0x04;
+const PACKET_NUMBER_LENGTH_MASK: u8 = 0x03;
+
+impl ShortHeaderPacket {
+    /// Decode a 1-RTT Short Header packet.
+    ///
+    /// `dcid_len` is the expected Destination Connection ID length, which must
+    /// be known from prior handshake negotiation (RFC 9000 Section 17.3).
+    pub fn decode(mut buf: Bytes, dcid_len: usize) -> Result<Self, PacketError> {
+        if buf.is_empty() {
+            return Err(PacketError::BufferTooShort);
+        }
+
+        let header_byte = buf.get_u8();
+
+        // Header Form bit must be 0 for short headers
+        if header_byte & HEADER_FORM_BIT != 0 {
+            return Err(PacketError::InvalidPacketHeader);
+        }
+        // Fixed bit must be 1
+        if header_byte & FIXED_BIT == 0 {
+            return Err(PacketError::InvalidPacketHeader);
+        }
+
+        let spin_bit = header_byte & SPIN_BIT != 0;
+        let key_phase = header_byte & KEY_PHASE_BIT != 0;
+        let packet_number_length = (header_byte & PACKET_NUMBER_LENGTH_MASK) + 1;
+
+        if buf.remaining() < dcid_len {
+            return Err(PacketError::BufferTooShort);
+        }
+        let destination_connection_id = buf.copy_to_bytes(dcid_len);
+
+        if buf.remaining() < packet_number_length as usize {
+            return Err(PacketError::BufferTooShort);
+        }
+        let packet_number = buf.copy_to_bytes(packet_number_length as usize);
+
+        if buf.is_empty() {
+            return Err(PacketError::BufferTooShort);
+        }
+        let packet_payload = buf.copy_to_bytes(buf.remaining());
+
+        Ok(ShortHeaderPacket {
+            spin_bit,
+            key_phase,
+            destination_connection_id,
+            packet_number,
+            packet_payload,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bytes::{BufMut, BytesMut};
+
+    #[test]
+    fn test_returns_buffer_too_short_when_buffer_is_empty() {
+        let buf = Bytes::from_static(&[]);
+        assert!(matches!(
+            ShortHeaderPacket::decode(buf, 0),
+            Err(PacketError::BufferTooShort)
+        ));
+    }
+
+    #[test]
+    fn test_returns_invalid_header_when_header_form_is_long() {
+        // 0b11000000: header form = 1 (long header), fixed bit = 1
+        let buf = Bytes::from_static(&[0b11000000, 0, 0, 0]);
+        assert!(matches!(
+            ShortHeaderPacket::decode(buf, 0),
+            Err(PacketError::InvalidPacketHeader)
+        ));
+    }
+
+    #[test]
+    fn test_returns_invalid_header_when_fixed_bit_not_set() {
+        // 0b00000000: header form = 0 (short), fixed bit = 0
+        let buf = Bytes::from_static(&[0b00000000, 0, 0, 0]);
+        assert!(matches!(
+            ShortHeaderPacket::decode(buf, 0),
+            Err(PacketError::InvalidPacketHeader)
+        ));
+    }
+
+    #[test]
+    fn test_returns_buffer_too_short_when_dcid_missing() {
+        // Valid header byte but no room for the 8-byte DCID
+        let buf = Bytes::from_static(&[0b01000000]);
+        assert!(matches!(
+            ShortHeaderPacket::decode(buf, 8),
+            Err(PacketError::BufferTooShort)
+        ));
+    }
+
+    #[test]
+    fn test_returns_buffer_too_short_when_packet_number_missing() {
+        let mut buf = BytesMut::new();
+        buf.put_u8(0b01000001); // pn_len = 2
+        buf.put(&[0u8; 4][..]); // 4-byte DCID
+        // No bytes left for packet number
+
+        assert!(matches!(
+            ShortHeaderPacket::decode(buf.freeze(), 4),
+            Err(PacketError::BufferTooShort)
+        ));
+    }
+
+    #[test]
+    fn test_returns_buffer_too_short_when_payload_empty() {
+        let mut buf = BytesMut::new();
+        buf.put_u8(0b01000000); // pn_len = 1
+        buf.put(&[0u8; 4][..]); // 4-byte DCID
+        buf.put_u8(0x01); // 1-byte packet number
+        // No payload bytes
+
+        assert!(matches!(
+            ShortHeaderPacket::decode(buf.freeze(), 4),
+            Err(PacketError::BufferTooShort)
+        ));
+    }
+
+    #[test]
+    fn test_decodes_valid_short_header_packet() {
+        let mut buf = BytesMut::new();
+        // 0b01000001: header form=0, fixed=1, spin=0, reserved=00, key_phase=0, pn_len=2
+        buf.put_u8(0b01000001);
+        buf.put(&b"\x01\x02\x03\x04"[..]); // 4-byte DCID
+        buf.put(&b"\x09\x0A"[..]); // 2-byte packet number
+        buf.put(&b"PING"[..]); // payload
+
+        let packet = ShortHeaderPacket::decode(buf.freeze(), 4).unwrap();
+        assert!(!packet.spin_bit);
+        assert!(!packet.key_phase);
+        assert_eq!(
+            packet.destination_connection_id,
+            Bytes::from(&b"\x01\x02\x03\x04"[..])
+        );
+        assert_eq!(packet.packet_number, Bytes::from(&b"\x09\x0A"[..]));
+        assert_eq!(packet.packet_payload, Bytes::from(&b"PING"[..]));
+    }
+
+    #[test]
+    fn test_decodes_spin_bit_and_key_phase() {
+        let mut buf = BytesMut::new();
+        // 0b01100100: header form=0, fixed=1, spin=1, reserved=00, key_phase=1, pn_len=1
+        buf.put_u8(0b01100100);
+        buf.put(&b"\xAA\xBB"[..]); // 2-byte DCID
+        buf.put_u8(0x42); // 1-byte packet number
+        buf.put(&b"DATA"[..]); // payload
+
+        let packet = ShortHeaderPacket::decode(buf.freeze(), 2).unwrap();
+        assert!(packet.spin_bit);
+        assert!(packet.key_phase);
+        assert_eq!(
+            packet.destination_connection_id,
+            Bytes::from(&b"\xAA\xBB"[..])
+        );
+        assert_eq!(packet.packet_number, Bytes::from_static(&[0x42]));
+        assert_eq!(packet.packet_payload, Bytes::from(&b"DATA"[..]));
+    }
+
+    #[test]
+    fn test_decodes_with_zero_length_dcid() {
+        let mut buf = BytesMut::new();
+        // 0b01000000: pn_len = 1, no spin, no key phase
+        buf.put_u8(0b01000000);
+        buf.put_u8(0x01); // 1-byte packet number
+        buf.put(&b"HELLO"[..]); // payload
+
+        let packet = ShortHeaderPacket::decode(buf.freeze(), 0).unwrap();
+        assert_eq!(packet.destination_connection_id.len(), 0);
+        assert_eq!(packet.packet_number, Bytes::from_static(&[0x01]));
+        assert_eq!(packet.packet_payload, Bytes::from(&b"HELLO"[..]));
+    }
+
+    #[test]
+    fn test_decodes_with_four_byte_packet_number() {
+        let mut buf = BytesMut::new();
+        // 0b01000011: pn_len = 4
+        buf.put_u8(0b01000011);
+        buf.put(&b"\x01\x02\x03\x04"[..]); // 4-byte DCID
+        buf.put(&b"\x00\x01\x00\x01"[..]); // 4-byte packet number
+        buf.put(&b"X"[..]); // minimal payload
+
+        let packet = ShortHeaderPacket::decode(buf.freeze(), 4).unwrap();
+        assert_eq!(
+            packet.packet_number,
+            Bytes::from(&b"\x00\x01\x00\x01"[..])
+        );
+        assert_eq!(packet.packet_payload, Bytes::from(&b"X"[..]));
+    }
+}
