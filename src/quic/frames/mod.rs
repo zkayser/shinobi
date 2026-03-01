@@ -2,9 +2,11 @@
 use bytes::Bytes;
 use thiserror::Error;
 
+use crate::quic::decode::var_int;
+
 type VarInt = u64;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum FrameError {
     #[error("Buffer too short")]
     BufferTooShort,
@@ -16,10 +18,13 @@ pub enum FrameError {
     InvalidConnectionIdLength,
 }
 
-enum StreamDirection {
+#[derive(Debug, PartialEq)]
+pub enum StreamDirection {
     BiDirectional,
     UniDirectional,
 }
+
+#[derive(Debug, PartialEq)]
 pub enum Frame {
     Padding,
     Ping,
@@ -33,10 +38,35 @@ pub enum Frame {
     MaxStreams(StreamDirection, VarInt),
     StreamDataBlocked(VarInt, VarInt),
     StreamsBlocked(StreamDirection, VarInt),
-    PathChallenge(u8, u8, u8, u8, u8, u8, u8, u8),
-    PathResponse(u8, u8, u8, u8, u8, u8, u8, u8),
+    PathChallenge([u8; 8]),
+    PathResponse([u8; 8]),
     NewToken(VarInt, Bytes),
     Crypto(VarInt, VarInt, Bytes),
     NewConnectionId(VarInt, VarInt, u8, VarInt, u128),
     ConnectionClose(VarInt, Option<VarInt>, VarInt, Bytes),
+}
+
+impl Frame {
+    pub fn decode(buf: &mut Bytes) -> Result<Self, FrameError> {
+        if buf.is_empty() {
+            return Err(FrameError::BufferTooShort);
+        }
+
+        let frame_type = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+
+        match frame_type {
+            _ => Err(FrameError::InvalidFrameType),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_returns_buffer_too_short_on_empty_input() {
+        let mut buf = Bytes::new();
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::BufferTooShort));
+    }
 }
