@@ -55,6 +55,7 @@ impl Frame {
         let frame_type = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
 
         match frame_type {
+            0x00 => Ok(Frame::Padding),
             _ => Err(FrameError::InvalidFrameType),
         }
     }
@@ -68,5 +69,11 @@ mod tests {
     fn test_decode_returns_buffer_too_short_on_empty_input() {
         let mut buf = Bytes::new();
         assert_eq!(Frame::decode(&mut buf), Err(FrameError::BufferTooShort));
+    }
+
+    #[test]
+    fn test_decode_padding_frame() {
+        let mut buf = Bytes::from_static(&[0x00]);
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::Padding));
     }
 }
