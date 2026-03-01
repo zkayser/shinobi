@@ -57,6 +57,13 @@ impl Frame {
         match frame_type {
             0x00 => Ok(Frame::Padding),
             0x01 => Ok(Frame::Ping),
+            0x10 => {
+                if buf.is_empty() {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let maximum_data = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::MaxData(maximum_data))
+            }
             0x1e => Ok(Frame::HandshakeDone),
             _ => Err(FrameError::InvalidFrameType),
         }
@@ -89,5 +96,19 @@ mod tests {
     fn test_decode_handshake_done_frame() {
         let mut buf = Bytes::from_static(&[0x1e]);
         assert_eq!(Frame::decode(&mut buf), Ok(Frame::HandshakeDone));
+    }
+
+    #[test]
+    fn test_decode_max_data_frame() {
+        // Type 0x10, maximum_data=42
+        let mut buf = Bytes::from_static(&[0x10, 0x2a]);
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::MaxData(42)));
+    }
+
+    #[test]
+    fn test_decode_max_data_frame_buffer_too_short() {
+        // Type 0x10, missing maximum_data field
+        let mut buf = Bytes::from_static(&[0x10]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
     }
 }
