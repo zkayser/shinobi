@@ -56,6 +56,7 @@ impl Frame {
 
         match frame_type {
             0x00 => Ok(Frame::Padding),
+            0x01 => Ok(Frame::Ping),
             _ => Err(FrameError::InvalidFrameType),
         }
     }
@@ -75,5 +76,11 @@ mod tests {
     fn test_decode_padding_frame() {
         let mut buf = Bytes::from_static(&[0x00]);
         assert_eq!(Frame::decode(&mut buf), Ok(Frame::Padding));
+    }
+
+    #[test]
+    fn test_decode_ping_frame() {
+        let mut buf = Bytes::from_static(&[0x01]);
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::Ping));
     }
 }
