@@ -64,6 +64,13 @@ impl Frame {
                 let maximum_data = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
                 Ok(Frame::MaxData(maximum_data))
             }
+            0x14 => {
+                if buf.is_empty() {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let maximum_data = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::DataBlocked(maximum_data))
+            }
             0x1e => Ok(Frame::HandshakeDone),
             _ => Err(FrameError::InvalidFrameType),
         }
@@ -109,6 +116,20 @@ mod tests {
     fn test_decode_max_data_frame_buffer_too_short() {
         // Type 0x10, missing maximum_data field
         let mut buf = Bytes::from_static(&[0x10]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
+    }
+
+    #[test]
+    fn test_decode_data_blocked_frame() {
+        // Type 0x14, maximum_data=63
+        let mut buf = Bytes::from_static(&[0x14, 0x3f]);
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::DataBlocked(63)));
+    }
+
+    #[test]
+    fn test_decode_data_blocked_frame_buffer_too_short() {
+        // Type 0x14, missing maximum_data field
+        let mut buf = Bytes::from_static(&[0x14]);
         assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
     }
 }
