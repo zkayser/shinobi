@@ -57,6 +57,7 @@ impl Frame {
         match frame_type {
             0x00 => Ok(Frame::Padding),
             0x01 => Ok(Frame::Ping),
+            0x1e => Ok(Frame::HandshakeDone),
             _ => Err(FrameError::InvalidFrameType),
         }
     }
@@ -82,5 +83,11 @@ mod tests {
     fn test_decode_ping_frame() {
         let mut buf = Bytes::from_static(&[0x01]);
         assert_eq!(Frame::decode(&mut buf), Ok(Frame::Ping));
+    }
+
+    #[test]
+    fn test_decode_handshake_done_frame() {
+        let mut buf = Bytes::from_static(&[0x1e]);
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::HandshakeDone));
     }
 }
