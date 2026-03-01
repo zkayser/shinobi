@@ -71,6 +71,13 @@ impl Frame {
                 let maximum_data = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
                 Ok(Frame::DataBlocked(maximum_data))
             }
+            0x19 => {
+                if buf.is_empty() {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let sequence_number = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::RetireConnectionId(sequence_number))
+            }
             0x1e => Ok(Frame::HandshakeDone),
             _ => Err(FrameError::InvalidFrameType),
         }
@@ -130,6 +137,20 @@ mod tests {
     fn test_decode_data_blocked_frame_buffer_too_short() {
         // Type 0x14, missing maximum_data field
         let mut buf = Bytes::from_static(&[0x14]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
+    }
+
+    #[test]
+    fn test_decode_retire_connection_id_frame() {
+        // Type 0x19, sequence_number=5
+        let mut buf = Bytes::from_static(&[0x19, 0x05]);
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::RetireConnectionId(5)));
+    }
+
+    #[test]
+    fn test_decode_retire_connection_id_frame_buffer_too_short() {
+        // Type 0x19, missing sequence_number field
+        let mut buf = Bytes::from_static(&[0x19]);
         assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
     }
 }
