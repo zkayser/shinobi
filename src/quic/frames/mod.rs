@@ -122,6 +122,17 @@ impl Frame {
                 let maximum_data = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
                 Ok(Frame::DataBlocked(maximum_data))
             }
+            0x15 => {
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let stream_id = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let maximum_stream_data = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::StreamDataBlocked(stream_id, maximum_stream_data))
+            }
             0x19 => {
                 if buf.is_empty() {
                     return Err(FrameError::InvalidVarInt);
@@ -389,6 +400,23 @@ mod tests {
     fn test_decode_max_streams_uni_frame_buffer_too_short() {
         // Type 0x13, missing max_streams
         let mut buf = Bytes::from_static(&[0x13]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
+    }
+
+    #[test]
+    fn test_decode_stream_data_blocked_frame() {
+        // Type 0x15, stream_id=5, maximum_stream_data=20
+        let mut buf = Bytes::from_static(&[0x15, 0x05, 0x14]);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::StreamDataBlocked(5, 20))
+        );
+    }
+
+    #[test]
+    fn test_decode_stream_data_blocked_frame_buffer_too_short() {
+        // Type 0x15, stream_id=5 but missing maximum_stream_data
+        let mut buf = Bytes::from_static(&[0x15, 0x05]);
         assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
     }
 
