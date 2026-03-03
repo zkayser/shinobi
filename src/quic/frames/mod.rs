@@ -88,6 +88,16 @@ impl Frame {
                 }
                 Ok(Frame::PathChallenge(data))
             }
+            0x1b => {
+                if buf.remaining() < 8 {
+                    return Err(FrameError::BufferTooShort);
+                }
+                let mut data = [0u8; 8];
+                for i in &mut data {
+                    *i = buf.get_u8();
+                }
+                Ok(Frame::PathResponse(data))
+            }
             0x1e => Ok(Frame::HandshakeDone),
             _ => Err(FrameError::InvalidFrameType),
         }
@@ -131,6 +141,27 @@ mod tests {
     #[test]
     fn test_decode_path_challenge_buffer_too_short() {
         let mut buf = Bytes::from_static(&[0x1a, 0x01, 0x02]);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Err(FrameError::BufferTooShort)
+        );
+    }
+
+    #[test]
+    fn test_decode_path_response() {
+        let mut buf =
+            Bytes::from_static(&[0x1b, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::PathResponse([
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08
+            ]))
+        );
+    }
+
+    #[test]
+    fn test_decode_path_response_buffer_too_short() {
+        let mut buf = Bytes::from_static(&[0x1b, 0x01, 0x02]);
         assert_eq!(
             Frame::decode(&mut buf),
             Err(FrameError::BufferTooShort)
