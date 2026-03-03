@@ -98,6 +98,22 @@ impl Frame {
                 }
                 Ok(Frame::PathResponse(data))
             }
+            0x1c => {
+                let error_code = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                let frame_type = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                let reason_phrase_length =
+                    var_int::read(buf).ok_or(FrameError::InvalidVarInt)? as usize;
+                if buf.remaining() < reason_phrase_length {
+                    return Err(FrameError::BufferTooShort);
+                }
+                let reason_phrase = buf.split_to(reason_phrase_length);
+                Ok(Frame::ConnectionClose(
+                    error_code,
+                    Some(frame_type),
+                    reason_phrase_length as VarInt,
+                    reason_phrase,
+                ))
+            }
             0x1e => Ok(Frame::HandshakeDone),
             _ => Err(FrameError::InvalidFrameType),
         }
@@ -162,6 +178,47 @@ mod tests {
     #[test]
     fn test_decode_path_response_buffer_too_short() {
         let mut buf = Bytes::from_static(&[0x1b, 0x01, 0x02]);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Err(FrameError::BufferTooShort)
+        );
+    }
+
+    #[test]
+    fn test_decode_connection_close_quic_empty_reason() {
+        // Type 0x1c, error_code=0x00, frame_type=0x00, reason_phrase_length=0
+        let mut buf = Bytes::from_static(&[0x1c, 0x00, 0x00, 0x00]);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::ConnectionClose(
+                0x00,
+                Some(0x00),
+                0,
+                Bytes::new()
+            ))
+        );
+    }
+
+    #[test]
+    fn test_decode_connection_close_quic_with_reason() {
+        // Type 0x1c, error_code=0x0a, frame_type=0x01, reason_phrase_length=5, reason="error"
+        let mut buf =
+            Bytes::from_static(&[0x1c, 0x0a, 0x01, 0x05, b'e', b'r', b'r', b'o', b'r']);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::ConnectionClose(
+                0x0a,
+                Some(0x01),
+                5,
+                Bytes::from_static(b"error")
+            ))
+        );
+    }
+
+    #[test]
+    fn test_decode_connection_close_quic_buffer_too_short() {
+        // Type 0x1c, error_code=0x0a, frame_type=0x01, reason_phrase_length=5, but only 2 bytes of reason
+        let mut buf = Bytes::from_static(&[0x1c, 0x0a, 0x01, 0x05, b'e', b'r']);
         assert_eq!(
             Frame::decode(&mut buf),
             Err(FrameError::BufferTooShort)
