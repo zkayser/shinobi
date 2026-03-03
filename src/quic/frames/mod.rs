@@ -72,6 +72,17 @@ impl Frame {
                 let crypto_data = buf.copy_to_bytes(length as usize);
                 Ok(Frame::Crypto(offset, length, crypto_data))
             }
+            0x07 => {
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let token_length = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                if buf.remaining() < token_length as usize {
+                    return Err(FrameError::BufferTooShort);
+                }
+                let token = buf.copy_to_bytes(token_length as usize);
+                Ok(Frame::NewToken(token_length, token))
+            }
             0x10 => {
                 if buf.is_empty() {
                     return Err(FrameError::InvalidVarInt);
@@ -142,6 +153,30 @@ mod tests {
     #[test]
     fn test_decode_crypto_frame_missing_length() {
         let mut buf = Bytes::from_static(&[0x06, 0x00]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
+    }
+
+    #[test]
+    fn test_decode_new_token_frame() {
+        let mut buf = Bytes::from_static(&[0x07, 0x03, b'a', b'b', b'c']);
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::NewToken(3, Bytes::from_static(&[b'a', b'b', b'c']))));
+    }
+
+    #[test]
+    fn test_decode_new_token_frame_empty_token() {
+        let mut buf = Bytes::from_static(&[0x07, 0x00]);
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::NewToken(0, Bytes::from_static(&[]))));
+    }
+
+    #[test]
+    fn test_decode_new_token_frame_buffer_too_short() {
+        let mut buf = Bytes::from_static(&[0x07, 0x05, b'a', b'b']);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::BufferTooShort));
+    }
+
+    #[test]
+    fn test_decode_new_token_frame_missing_length() {
+        let mut buf = Bytes::from_static(&[0x07]);
         assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
     }
 
