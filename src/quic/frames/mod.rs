@@ -106,14 +106,20 @@ impl Frame {
                     return Err(FrameError::InvalidVarInt);
                 }
                 let max_streams = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
-                Ok(Frame::MaxStreams(StreamDirection::BiDirectional, max_streams))
+                Ok(Frame::MaxStreams(
+                    StreamDirection::BiDirectional,
+                    max_streams,
+                ))
             }
             0x13 => {
                 if buf.remaining() == 0 {
                     return Err(FrameError::InvalidVarInt);
                 }
                 let max_streams = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
-                Ok(Frame::MaxStreams(StreamDirection::UniDirectional, max_streams))
+                Ok(Frame::MaxStreams(
+                    StreamDirection::UniDirectional,
+                    max_streams,
+                ))
             }
             0x14 => {
                 if buf.is_empty() {
@@ -138,14 +144,20 @@ impl Frame {
                     return Err(FrameError::InvalidVarInt);
                 }
                 let max_streams = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
-                Ok(Frame::StreamsBlocked(StreamDirection::BiDirectional, max_streams))
+                Ok(Frame::StreamsBlocked(
+                    StreamDirection::BiDirectional,
+                    max_streams,
+                ))
             }
             0x17 => {
                 if buf.remaining() == 0 {
                     return Err(FrameError::InvalidVarInt);
                 }
                 let max_streams = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
-                Ok(Frame::StreamsBlocked(StreamDirection::UniDirectional, max_streams))
+                Ok(Frame::StreamsBlocked(
+                    StreamDirection::UniDirectional,
+                    max_streams,
+                ))
             }
             0x19 => {
                 if buf.is_empty() {
@@ -336,10 +348,7 @@ mod tests {
     fn test_decode_reset_stream_frame() {
         // Type 0x04, stream_id=1, error_code=2, final_size=3
         let mut buf = Bytes::from_static(&[0x04, 0x01, 0x02, 0x03]);
-        assert_eq!(
-            Frame::decode(&mut buf),
-            Ok(Frame::ResetStream(1, 2, 3))
-        );
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::ResetStream(1, 2, 3)));
     }
 
     #[test]
@@ -353,10 +362,7 @@ mod tests {
     fn test_decode_stop_sending_frame() {
         // Type 0x05, stream_id=4, error_code=10
         let mut buf = Bytes::from_static(&[0x05, 0x04, 0x0a]);
-        assert_eq!(
-            Frame::decode(&mut buf),
-            Ok(Frame::StopSending(4, 10))
-        );
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::StopSending(4, 10)));
     }
 
     #[test]
@@ -370,10 +376,7 @@ mod tests {
     fn test_decode_max_stream_data_frame() {
         // Type 0x11, stream_id=8, maximum_stream_data=32
         let mut buf = Bytes::from_static(&[0x11, 0x08, 0x20]);
-        assert_eq!(
-            Frame::decode(&mut buf),
-            Ok(Frame::MaxStreamData(8, 32))
-        );
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::MaxStreamData(8, 32)));
     }
 
     #[test]
@@ -421,10 +424,7 @@ mod tests {
     fn test_decode_stream_data_blocked_frame() {
         // Type 0x15, stream_id=5, maximum_stream_data=20
         let mut buf = Bytes::from_static(&[0x15, 0x05, 0x14]);
-        assert_eq!(
-            Frame::decode(&mut buf),
-            Ok(Frame::StreamDataBlocked(5, 20))
-        );
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::StreamDataBlocked(5, 20)));
     }
 
     #[test]
