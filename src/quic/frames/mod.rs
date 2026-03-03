@@ -140,6 +140,13 @@ impl Frame {
                 let max_streams = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
                 Ok(Frame::StreamsBlocked(StreamDirection::BiDirectional, max_streams))
             }
+            0x17 => {
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let max_streams = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::StreamsBlocked(StreamDirection::UniDirectional, max_streams))
+            }
             0x19 => {
                 if buf.is_empty() {
                     return Err(FrameError::InvalidVarInt);
@@ -441,6 +448,23 @@ mod tests {
     fn test_decode_streams_blocked_bidi_frame_buffer_too_short() {
         // Type 0x16, missing max_streams
         let mut buf = Bytes::from_static(&[0x16]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
+    }
+
+    #[test]
+    fn test_decode_streams_blocked_uni_frame() {
+        // Type 0x17, max_streams=25
+        let mut buf = Bytes::from_static(&[0x17, 0x19]);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::StreamsBlocked(StreamDirection::UniDirectional, 25))
+        );
+    }
+
+    #[test]
+    fn test_decode_streams_blocked_uni_frame_buffer_too_short() {
+        // Type 0x17, missing max_streams
+        let mut buf = Bytes::from_static(&[0x17]);
         assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
     }
 
