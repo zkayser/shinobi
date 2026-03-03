@@ -160,6 +160,7 @@ mod tests {
     #[test]
     fn test_decode_path_challenge() {
         let mut buf = Bytes::from_static(&[0x1a, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        let mut buf = Bytes::from_static(&[0x1a, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
         assert_eq!(
             Frame::decode(&mut buf),
             Ok(Frame::PathChallenge([
@@ -171,21 +172,6 @@ mod tests {
     #[test]
     fn test_decode_path_challenge_buffer_too_short() {
         let mut buf = Bytes::from_static(&[0x1a, 0x01, 0x02]);
-        assert_eq!(
-            Frame::decode(&mut buf),
-            Ok(Frame::ConnectionClose(
-                0x0a,
-                None,
-                5,
-                Bytes::from_static(b"error")
-            ))
-        );
-    }
-
-    #[test]
-    fn test_decode_connection_close_app_buffer_too_short() {
-        // Type 0x1d, error_code=0x0a, reason_phrase_length=5, but only 2 bytes of reason
-        let mut buf = Bytes::from_static(&[0x1d, 0x0a, 0x05, b'e', b'r']);
         assert_eq!(Frame::decode(&mut buf), Err(FrameError::BufferTooShort));
     }
 
@@ -267,10 +253,7 @@ mod tests {
     fn test_decode_connection_close_app_buffer_too_short() {
         // Type 0x1d, error_code=0x0a, reason_phrase_length=5, but only 2 bytes of reason
         let mut buf = Bytes::from_static(&[0x1d, 0x0a, 0x05, b'e', b'r']);
-        assert_eq!(
-            Frame::decode(&mut buf),
-            Err(FrameError::BufferTooShort)
-        );
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::BufferTooShort));
     }
 
     #[test]
