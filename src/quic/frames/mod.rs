@@ -57,6 +57,21 @@ impl Frame {
         match frame_type {
             0x00 => Ok(Frame::Padding),
             0x01 => Ok(Frame::Ping),
+            0x04 => {
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let stream_id = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let error_code = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let final_size = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::ResetStream(stream_id, error_code, final_size))
+            }
             0x10 => {
                 if buf.is_empty() {
                     return Err(FrameError::InvalidVarInt);
@@ -254,6 +269,23 @@ mod tests {
         // Type 0x1d, error_code=0x0a, reason_phrase_length=5, but only 2 bytes of reason
         let mut buf = Bytes::from_static(&[0x1d, 0x0a, 0x05, b'e', b'r']);
         assert_eq!(Frame::decode(&mut buf), Err(FrameError::BufferTooShort));
+    }
+
+    #[test]
+    fn test_decode_reset_stream_frame() {
+        // Type 0x04, stream_id=1, error_code=2, final_size=3
+        let mut buf = Bytes::from_static(&[0x04, 0x01, 0x02, 0x03]);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::ResetStream(1, 2, 3))
+        );
+    }
+
+    #[test]
+    fn test_decode_reset_stream_frame_buffer_too_short() {
+        // Type 0x04, stream_id=1 but missing error_code and final_size
+        let mut buf = Bytes::from_static(&[0x04, 0x01]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
     }
 
     #[test]
