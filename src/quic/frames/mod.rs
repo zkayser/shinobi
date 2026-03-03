@@ -97,6 +97,47 @@ impl Frame {
                 let maximum_data = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
                 Ok(Frame::DataBlocked(maximum_data))
             }
+            0x18 => {
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let sequence_number = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let retire_prior_to = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                if buf.remaining() == 0 {
+                    return Err(FrameError::BufferTooShort);
+                }
+                let connection_id_length = buf[0];
+                buf.advance(1);
+                if connection_id_length > 8 {
+                    return Err(FrameError::InvalidConnectionIdLength);
+                }
+                if buf.remaining() < connection_id_length as usize {
+                    return Err(FrameError::BufferTooShort);
+                }
+                let connection_id = if connection_id_length > 0 {
+                    let cid_bytes = buf.copy_to_bytes(connection_id_length as usize);
+                    let mut padded = [0u8; 8];
+                    let start = 8 - connection_id_length as usize;
+                    padded[start..].copy_from_slice(&cid_bytes);
+                    u64::from_be_bytes(padded)
+                } else {
+                    0
+                };
+                if buf.remaining() < 16 {
+                    return Err(FrameError::BufferTooShort);
+                }
+                let stateless_reset_token = u128::from_be_bytes([
+                    buf[0], buf[1], buf[2], buf[3],
+                    buf[4], buf[5], buf[6], buf[7],
+                    buf[8], buf[9], buf[10], buf[11],
+                    buf[12], buf[13], buf[14], buf[15],
+                ]);
+                buf.advance(16);
+                Ok(Frame::NewConnectionId(sequence_number, retire_prior_to, connection_id_length, connection_id, stateless_reset_token))
+            }
             0x19 => {
                 if buf.is_empty() {
                     return Err(FrameError::InvalidVarInt);
@@ -177,6 +218,75 @@ mod tests {
     #[test]
     fn test_decode_new_token_frame_missing_length() {
         let mut buf = Bytes::from_static(&[0x07]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
+    }
+
+    #[test]
+    fn test_decode_new_connection_id_frame() {
+        let mut buf = Bytes::from_static(&[
+            0x18, // frame type
+            0x01, // sequence_number = 1
+            0x00, // retire_prior_to = 0
+            0x04, // connection_id_length = 4
+            0xDE, 0xAD, 0xBE, 0xEF, // connection_id
+            // stateless_reset_token (16 bytes)
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+            0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        ]);
+        let expected_cid: u64 = 0xDEADBEEF;
+        let expected_token: u128 = 0x000102030405060708090a0b0c0d0e0f;
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::NewConnectionId(1, 0, 4, expected_cid, expected_token))
+        );
+    }
+
+    #[test]
+    fn test_decode_new_connection_id_frame_zero_length_cid() {
+        let mut buf = Bytes::from_static(&[
+            0x18, // frame type
+            0x02, // sequence_number = 2
+            0x01, // retire_prior_to = 1
+            0x00, // connection_id_length = 0
+            // stateless_reset_token (16 bytes)
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+            0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+        ]);
+        let expected_token: u128 = 0x101112131415161718191a1b1c1d1e1f;
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::NewConnectionId(2, 1, 0, 0, expected_token))
+        );
+    }
+
+    #[test]
+    fn test_decode_new_connection_id_frame_invalid_cid_length() {
+        let mut buf = Bytes::from_static(&[
+            0x18, // frame type
+            0x01, // sequence_number
+            0x00, // retire_prior_to
+            0x09, // connection_id_length = 9 (> 8, invalid)
+        ]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidConnectionIdLength));
+    }
+
+    #[test]
+    fn test_decode_new_connection_id_frame_buffer_too_short_for_token() {
+        let mut buf = Bytes::from_static(&[
+            0x18, // frame type
+            0x01, // sequence_number
+            0x00, // retire_prior_to
+            0x02, // connection_id_length = 2
+            0xAB, 0xCD, // connection_id
+            // only 4 bytes of reset token (need 16)
+            0x00, 0x01, 0x02, 0x03,
+        ]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::BufferTooShort));
+    }
+
+    #[test]
+    fn test_decode_new_connection_id_frame_missing_fields() {
+        let mut buf = Bytes::from_static(&[0x18]);
         assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
     }
 
