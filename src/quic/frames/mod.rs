@@ -207,6 +207,38 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_connection_close_quic_empty_reason() {
+        // Type 0x1c, error_code=0x00, frame_type=0x00, reason_phrase_length=0
+        let mut buf = Bytes::from_static(&[0x1c, 0x00, 0x00, 0x00]);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::ConnectionClose(0x00, Some(0x00), 0, Bytes::new()))
+        );
+    }
+
+    #[test]
+    fn test_decode_connection_close_quic_with_reason() {
+        // Type 0x1c, error_code=0x0a, frame_type=0x01, reason_phrase_length=5, reason="error"
+        let mut buf = Bytes::from_static(&[0x1c, 0x0a, 0x01, 0x05, b'e', b'r', b'r', b'o', b'r']);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::ConnectionClose(
+                0x0a,
+                Some(0x01),
+                5,
+                Bytes::from_static(b"error")
+            ))
+        );
+    }
+
+    #[test]
+    fn test_decode_connection_close_quic_buffer_too_short() {
+        // Type 0x1c, error_code=0x0a, frame_type=0x01, reason_phrase_length=5, but only 2 bytes of reason
+        let mut buf = Bytes::from_static(&[0x1c, 0x0a, 0x01, 0x05, b'e', b'r']);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::BufferTooShort));
+    }
+
+    #[test]
     fn test_decode_handshake_done_frame() {
         let mut buf = Bytes::from_static(&[0x1e]);
         assert_eq!(Frame::decode(&mut buf), Ok(Frame::HandshakeDone));
