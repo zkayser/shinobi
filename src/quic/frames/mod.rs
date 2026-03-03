@@ -130,13 +130,17 @@ impl Frame {
                     return Err(FrameError::BufferTooShort);
                 }
                 let stateless_reset_token = u128::from_be_bytes([
-                    buf[0], buf[1], buf[2], buf[3],
-                    buf[4], buf[5], buf[6], buf[7],
-                    buf[8], buf[9], buf[10], buf[11],
-                    buf[12], buf[13], buf[14], buf[15],
+                    buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8], buf[9],
+                    buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
                 ]);
                 buf.advance(16);
-                Ok(Frame::NewConnectionId(sequence_number, retire_prior_to, connection_id_length, connection_id, stateless_reset_token))
+                Ok(Frame::NewConnectionId(
+                    sequence_number,
+                    retire_prior_to,
+                    connection_id_length,
+                    connection_id,
+                    stateless_reset_token,
+                ))
             }
             0x19 => {
                 if buf.is_empty() {
@@ -176,13 +180,19 @@ mod tests {
     #[test]
     fn test_decode_crypto_frame() {
         let mut buf = Bytes::from_static(&[0x06, 0x00, 0x03, b'T', b'L', b'S']);
-        assert_eq!(Frame::decode(&mut buf), Ok(Frame::Crypto(0, 3, Bytes::from_static(&[b'T', b'L', b'S']))));
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::Crypto(0, 3, Bytes::from_static(&[b'T', b'L', b'S'])))
+        );
     }
 
     #[test]
     fn test_decode_crypto_frame_with_nonzero_offset() {
         let mut buf = Bytes::from_static(&[0x06, 0x0a, 0x02, b'H', b'i']);
-        assert_eq!(Frame::decode(&mut buf), Ok(Frame::Crypto(10, 2, Bytes::from_static(&[b'H', b'i']))));
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::Crypto(10, 2, Bytes::from_static(&[b'H', b'i'])))
+        );
     }
 
     #[test]
@@ -200,13 +210,19 @@ mod tests {
     #[test]
     fn test_decode_new_token_frame() {
         let mut buf = Bytes::from_static(&[0x07, 0x03, b'a', b'b', b'c']);
-        assert_eq!(Frame::decode(&mut buf), Ok(Frame::NewToken(3, Bytes::from_static(&[b'a', b'b', b'c']))));
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::NewToken(3, Bytes::from_static(&[b'a', b'b', b'c'])))
+        );
     }
 
     #[test]
     fn test_decode_new_token_frame_empty_token() {
         let mut buf = Bytes::from_static(&[0x07, 0x00]);
-        assert_eq!(Frame::decode(&mut buf), Ok(Frame::NewToken(0, Bytes::from_static(&[]))));
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::NewToken(0, Bytes::from_static(&[])))
+        );
     }
 
     #[test]
@@ -230,14 +246,20 @@ mod tests {
             0x04, // connection_id_length = 4
             0xDE, 0xAD, 0xBE, 0xEF, // connection_id
             // stateless_reset_token (16 bytes)
-            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-            0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d,
+            0x0e, 0x0f,
         ]);
         let expected_cid: u64 = 0xDEADBEEF;
         let expected_token: u128 = 0x000102030405060708090a0b0c0d0e0f;
         assert_eq!(
             Frame::decode(&mut buf),
-            Ok(Frame::NewConnectionId(1, 0, 4, expected_cid, expected_token))
+            Ok(Frame::NewConnectionId(
+                1,
+                0,
+                4,
+                expected_cid,
+                expected_token
+            ))
         );
     }
 
@@ -249,8 +271,8 @@ mod tests {
             0x01, // retire_prior_to = 1
             0x00, // connection_id_length = 0
             // stateless_reset_token (16 bytes)
-            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
-            0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+            0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+            0x1e, 0x1f,
         ]);
         let expected_token: u128 = 0x101112131415161718191a1b1c1d1e1f;
         assert_eq!(
@@ -267,7 +289,10 @@ mod tests {
             0x00, // retire_prior_to
             0x09, // connection_id_length = 9 (> 8, invalid)
         ]);
-        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidConnectionIdLength));
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Err(FrameError::InvalidConnectionIdLength)
+        );
     }
 
     #[test]
