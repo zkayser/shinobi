@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+pub mod validate;
+
 use bytes::{Buf, Bytes};
 use thiserror::Error;
 
@@ -29,6 +31,13 @@ pub enum Frame {
     Padding,
     Ping,
     HandshakeDone,
+    Stream {
+        id: VarInt,
+        offset: VarInt,
+        fin: bool,
+        len: VarInt,
+        data: Bytes,
+    },
     MaxData(VarInt),
     DataBlocked(VarInt),
     RetireConnectionId(VarInt),
@@ -57,6 +66,43 @@ impl Frame {
         match frame_type {
             0x00 => Ok(Frame::Padding),
             0x01 => Ok(Frame::Ping),
+            0x08..=0x0f => {
+                let fin = (frame_type & 0x01) != 0;
+                let len_flag = (frame_type & 0x02) != 0;
+                let off_flag = (frame_type & 0x04) != 0;
+
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let stream_id = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                let offset = if off_flag {
+                    if buf.remaining() == 0 {
+                        return Err(FrameError::InvalidVarInt);
+                    }
+                    var_int::read(buf).ok_or(FrameError::InvalidVarInt)?
+                } else {
+                    0
+                };
+                let len = if len_flag {
+                    if buf.remaining() == 0 {
+                        return Err(FrameError::InvalidVarInt);
+                    }
+                    var_int::read(buf).ok_or(FrameError::InvalidVarInt)?
+                } else {
+                    buf.remaining() as VarInt
+                };
+                if len > buf.remaining() as VarInt {
+                    return Err(FrameError::BufferTooShort);
+                }
+                let data = buf.copy_to_bytes(len as usize);
+                Ok(Frame::Stream {
+                    id: stream_id,
+                    offset,
+                    fin,
+                    len,
+                    data,
+                })
+            }
             0x04 => {
                 if buf.remaining() == 0 {
                     return Err(FrameError::InvalidVarInt);
@@ -243,6 +289,57 @@ mod tests {
     fn test_decode_ping_frame() {
         let mut buf = Bytes::from_static(&[0x01]);
         assert_eq!(Frame::decode(&mut buf), Ok(Frame::Ping));
+    }
+
+    #[test]
+    fn test_decode_stream_frame_no_off_no_len() {
+        let mut buf = Bytes::from_static(&[0x08, 0x05, b'H', b'i']);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::Stream {
+                id: 5,
+                offset: 0,
+                fin: false,
+                len: 2,
+                data: Bytes::from_static(b"Hi"),
+            })
+        );
+    }
+
+    #[test]
+    fn test_decode_stream_frame_with_off_and_len() {
+        let mut buf = Bytes::from_static(&[0x0e, 0x02, 0x04, 0x03, b'a', b'b', b'c']);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::Stream {
+                id: 2,
+                offset: 4,
+                fin: false,
+                len: 3,
+                data: Bytes::from_static(b"abc"),
+            })
+        );
+    }
+
+    #[test]
+    fn test_decode_stream_frame_with_fin_and_len() {
+        let mut buf = Bytes::from_static(&[0x0b, 0x01, 0x01, b'Z']);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::Stream {
+                id: 1,
+                offset: 0,
+                fin: true,
+                len: 1,
+                data: Bytes::from_static(b"Z"),
+            })
+        );
+    }
+
+    #[test]
+    fn test_decode_stream_frame_buffer_too_short_for_len() {
+        let mut buf = Bytes::from_static(&[0x0a, 0x01, 0x03, b'a']);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::BufferTooShort));
     }
 
     #[test]
