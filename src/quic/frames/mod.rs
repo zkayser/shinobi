@@ -248,7 +248,6 @@ mod tests {
     #[test]
     fn test_decode_path_challenge() {
         let mut buf = Bytes::from_static(&[0x1a, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        let mut buf = Bytes::from_static(&[0x1a, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
         assert_eq!(
             Frame::decode(&mut buf),
             Ok(Frame::PathChallenge([
