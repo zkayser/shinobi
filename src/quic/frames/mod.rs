@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+pub mod validate;
+
 use bytes::{Buf, Bytes};
 use thiserror::Error;
 
@@ -29,6 +31,13 @@ pub enum Frame {
     Padding,
     Ping,
     HandshakeDone,
+    Stream {
+        id: VarInt,
+        offset: VarInt,
+        fin: bool,
+        len: VarInt,
+        data: Bytes,
+    },
     MaxData(VarInt),
     DataBlocked(VarInt),
     RetireConnectionId(VarInt),
@@ -57,6 +66,69 @@ impl Frame {
         match frame_type {
             0x00 => Ok(Frame::Padding),
             0x01 => Ok(Frame::Ping),
+            0x08..=0x0f => {
+                let fin = (frame_type & 0x01) != 0;
+                let len_flag = (frame_type & 0x02) != 0;
+                let off_flag = (frame_type & 0x04) != 0;
+
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let stream_id = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                let offset = if off_flag {
+                    if buf.remaining() == 0 {
+                        return Err(FrameError::InvalidVarInt);
+                    }
+                    var_int::read(buf).ok_or(FrameError::InvalidVarInt)?
+                } else {
+                    0
+                };
+                let len = if len_flag {
+                    if buf.remaining() == 0 {
+                        return Err(FrameError::InvalidVarInt);
+                    }
+                    var_int::read(buf).ok_or(FrameError::InvalidVarInt)?
+                } else {
+                    buf.remaining() as VarInt
+                };
+                if len > buf.remaining() as VarInt {
+                    return Err(FrameError::BufferTooShort);
+                }
+                let data = buf.copy_to_bytes(len as usize);
+                Ok(Frame::Stream {
+                    id: stream_id,
+                    offset,
+                    fin,
+                    len,
+                    data,
+                })
+            }
+            0x04 => {
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let stream_id = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let error_code = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let final_size = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::ResetStream(stream_id, error_code, final_size))
+            }
+            0x05 => {
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let stream_id = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let error_code = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::StopSending(stream_id, error_code))
+            }
             0x10 => {
                 if buf.is_empty() {
                     return Err(FrameError::InvalidVarInt);
@@ -64,12 +136,74 @@ impl Frame {
                 let maximum_data = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
                 Ok(Frame::MaxData(maximum_data))
             }
+            0x11 => {
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let stream_id = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let maximum_stream_data = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::MaxStreamData(stream_id, maximum_stream_data))
+            }
+            0x12 => {
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let max_streams = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::MaxStreams(
+                    StreamDirection::BiDirectional,
+                    max_streams,
+                ))
+            }
+            0x13 => {
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let max_streams = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::MaxStreams(
+                    StreamDirection::UniDirectional,
+                    max_streams,
+                ))
+            }
             0x14 => {
                 if buf.is_empty() {
                     return Err(FrameError::InvalidVarInt);
                 }
                 let maximum_data = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
                 Ok(Frame::DataBlocked(maximum_data))
+            }
+            0x15 => {
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let stream_id = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let maximum_stream_data = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::StreamDataBlocked(stream_id, maximum_stream_data))
+            }
+            0x16 => {
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let max_streams = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::StreamsBlocked(
+                    StreamDirection::BiDirectional,
+                    max_streams,
+                ))
+            }
+            0x17 => {
+                if buf.remaining() == 0 {
+                    return Err(FrameError::InvalidVarInt);
+                }
+                let max_streams = var_int::read(buf).ok_or(FrameError::InvalidVarInt)?;
+                Ok(Frame::StreamsBlocked(
+                    StreamDirection::UniDirectional,
+                    max_streams,
+                ))
             }
             0x19 => {
                 if buf.is_empty() {
@@ -155,6 +289,57 @@ mod tests {
     fn test_decode_ping_frame() {
         let mut buf = Bytes::from_static(&[0x01]);
         assert_eq!(Frame::decode(&mut buf), Ok(Frame::Ping));
+    }
+
+    #[test]
+    fn test_decode_stream_frame_no_off_no_len() {
+        let mut buf = Bytes::from_static(&[0x08, 0x05, b'H', b'i']);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::Stream {
+                id: 5,
+                offset: 0,
+                fin: false,
+                len: 2,
+                data: Bytes::from_static(b"Hi"),
+            })
+        );
+    }
+
+    #[test]
+    fn test_decode_stream_frame_with_off_and_len() {
+        let mut buf = Bytes::from_static(&[0x0e, 0x02, 0x04, 0x03, b'a', b'b', b'c']);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::Stream {
+                id: 2,
+                offset: 4,
+                fin: false,
+                len: 3,
+                data: Bytes::from_static(b"abc"),
+            })
+        );
+    }
+
+    #[test]
+    fn test_decode_stream_frame_with_fin_and_len() {
+        let mut buf = Bytes::from_static(&[0x0b, 0x01, 0x01, b'Z']);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::Stream {
+                id: 1,
+                offset: 0,
+                fin: true,
+                len: 1,
+                data: Bytes::from_static(b"Z"),
+            })
+        );
+    }
+
+    #[test]
+    fn test_decode_stream_frame_buffer_too_short_for_len() {
+        let mut buf = Bytes::from_static(&[0x0a, 0x01, 0x03, b'a']);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::BufferTooShort));
     }
 
     #[test]
@@ -253,6 +438,130 @@ mod tests {
         // Type 0x1d, error_code=0x0a, reason_phrase_length=5, but only 2 bytes of reason
         let mut buf = Bytes::from_static(&[0x1d, 0x0a, 0x05, b'e', b'r']);
         assert_eq!(Frame::decode(&mut buf), Err(FrameError::BufferTooShort));
+    }
+
+    #[test]
+    fn test_decode_reset_stream_frame() {
+        // Type 0x04, stream_id=1, error_code=2, final_size=3
+        let mut buf = Bytes::from_static(&[0x04, 0x01, 0x02, 0x03]);
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::ResetStream(1, 2, 3)));
+    }
+
+    #[test]
+    fn test_decode_reset_stream_frame_buffer_too_short() {
+        // Type 0x04, stream_id=1 but missing error_code and final_size
+        let mut buf = Bytes::from_static(&[0x04, 0x01]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
+    }
+
+    #[test]
+    fn test_decode_stop_sending_frame() {
+        // Type 0x05, stream_id=4, error_code=10
+        let mut buf = Bytes::from_static(&[0x05, 0x04, 0x0a]);
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::StopSending(4, 10)));
+    }
+
+    #[test]
+    fn test_decode_stop_sending_frame_buffer_too_short() {
+        // Type 0x05, stream_id=4 but missing error_code
+        let mut buf = Bytes::from_static(&[0x05, 0x04]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
+    }
+
+    #[test]
+    fn test_decode_max_stream_data_frame() {
+        // Type 0x11, stream_id=8, maximum_stream_data=32
+        let mut buf = Bytes::from_static(&[0x11, 0x08, 0x20]);
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::MaxStreamData(8, 32)));
+    }
+
+    #[test]
+    fn test_decode_max_stream_data_frame_buffer_too_short() {
+        // Type 0x11, stream_id=8 but missing maximum_stream_data
+        let mut buf = Bytes::from_static(&[0x11, 0x08]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
+    }
+
+    #[test]
+    fn test_decode_max_streams_bidi_frame() {
+        // Type 0x12, max_streams=16
+        let mut buf = Bytes::from_static(&[0x12, 0x10]);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::MaxStreams(StreamDirection::BiDirectional, 16))
+        );
+    }
+
+    #[test]
+    fn test_decode_max_streams_bidi_frame_buffer_too_short() {
+        // Type 0x12, missing max_streams
+        let mut buf = Bytes::from_static(&[0x12]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
+    }
+
+    #[test]
+    fn test_decode_max_streams_uni_frame() {
+        // Type 0x13, max_streams=32
+        let mut buf = Bytes::from_static(&[0x13, 0x20]);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::MaxStreams(StreamDirection::UniDirectional, 32))
+        );
+    }
+
+    #[test]
+    fn test_decode_max_streams_uni_frame_buffer_too_short() {
+        // Type 0x13, missing max_streams
+        let mut buf = Bytes::from_static(&[0x13]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
+    }
+
+    #[test]
+    fn test_decode_stream_data_blocked_frame() {
+        // Type 0x15, stream_id=5, maximum_stream_data=20
+        let mut buf = Bytes::from_static(&[0x15, 0x05, 0x14]);
+        assert_eq!(Frame::decode(&mut buf), Ok(Frame::StreamDataBlocked(5, 20)));
+    }
+
+    #[test]
+    fn test_decode_stream_data_blocked_frame_buffer_too_short() {
+        // Type 0x15, stream_id=5 but missing maximum_stream_data
+        let mut buf = Bytes::from_static(&[0x15, 0x05]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
+    }
+
+    #[test]
+    fn test_decode_streams_blocked_bidi_frame() {
+        // Type 0x16, max_streams=10
+        let mut buf = Bytes::from_static(&[0x16, 0x0a]);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::StreamsBlocked(StreamDirection::BiDirectional, 10))
+        );
+    }
+
+    #[test]
+    fn test_decode_streams_blocked_bidi_frame_buffer_too_short() {
+        // Type 0x16, missing max_streams
+        let mut buf = Bytes::from_static(&[0x16]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
+    }
+
+    #[test]
+    fn test_decode_streams_blocked_uni_frame() {
+        // Type 0x17, max_streams=25
+        let mut buf = Bytes::from_static(&[0x17, 0x19]);
+        assert_eq!(
+            Frame::decode(&mut buf),
+            Ok(Frame::StreamsBlocked(StreamDirection::UniDirectional, 25))
+        );
+    }
+
+    #[test]
+    fn test_decode_streams_blocked_uni_frame_buffer_too_short() {
+        // Type 0x17, missing max_streams
+        let mut buf = Bytes::from_static(&[0x17]);
+        assert_eq!(Frame::decode(&mut buf), Err(FrameError::InvalidVarInt));
     }
 
     #[test]
