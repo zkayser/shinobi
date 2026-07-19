@@ -22,7 +22,12 @@ impl Default for VersionNegotiationPacket {
 }
 
 impl Decode for VersionNegotiationPacket {
-    fn decode(mut buf: Bytes) -> Result<VersionNegotiationPacket, PacketError> {
+    type Context = ();
+
+    fn decode(
+        mut buf: Bytes,
+        _ctx: Self::Context,
+    ) -> Result<VersionNegotiationPacket, PacketError> {
         if buf.len() < 7 {
             return Err(PacketError::BufferTooShort);
         }
@@ -75,7 +80,7 @@ mod tests {
     fn test_decode_too_short() {
         let buf = Bytes::from_static(&[0u8; 5]);
         assert!(matches!(
-            VersionNegotiationPacket::decode(buf),
+            VersionNegotiationPacket::decode(buf, ()),
             Err(PacketError::BufferTooShort)
         ));
     }
@@ -84,7 +89,7 @@ mod tests {
     fn test_decode_not_long_header() {
         let buf = Bytes::from_static(&[0x7Fu8; 10]);
         assert!(matches!(
-            VersionNegotiationPacket::decode(buf),
+            VersionNegotiationPacket::decode(buf, ()),
             Err(PacketError::InvalidPacketHeader)
         ));
     }
@@ -93,7 +98,7 @@ mod tests {
     fn test_decode_not_version_negotiation() {
         let buf = Bytes::from_static(&[0x80u8, 0, 0, 0, 1, 0, 0, 0, 0]);
         assert!(matches!(
-            VersionNegotiationPacket::decode(buf),
+            VersionNegotiationPacket::decode(buf, ()),
             Err(PacketError::UnexpectedPacketType)
         ));
     }
@@ -110,7 +115,7 @@ mod tests {
         buf.put_u32(1_u32);
         buf.put_u32(2_u32);
 
-        let packet = VersionNegotiationPacket::decode(buf.freeze()).unwrap();
+        let packet = VersionNegotiationPacket::decode(buf.freeze(), ()).unwrap();
         assert_eq!(packet.version, 0);
         assert_eq!(packet.destination_connection_id.len(), 8);
         assert_eq!(packet.source_connection_id.len(), 8);

@@ -49,7 +49,9 @@ const PACKET_TYPE_RETRY: u8 = 0x30;
 const RETRY_INTEGRITY_TAG_LENGTH: usize = 16;
 
 impl Decode for LongHeaderPacket {
-    fn decode(mut buf: Bytes) -> Result<Self, PacketError> {
+    type Context = ();
+
+    fn decode(mut buf: Bytes, _ctx: Self::Context) -> Result<Self, PacketError> {
         if buf.is_empty() {
             return Err(PacketError::BufferTooShort);
         }
@@ -173,7 +175,7 @@ mod tests {
     fn test_returns_buffer_too_short_when_buffer_is_empty() {
         let buf = Bytes::from_static(&[]);
         assert!(matches!(
-            LongHeaderPacket::decode(buf),
+            LongHeaderPacket::decode(buf, ()),
             Err(PacketError::BufferTooShort)
         ));
     }
@@ -182,7 +184,7 @@ mod tests {
     fn test_returns_invalid_header_when_not_long_header() {
         let buf = Bytes::from_static(&[0b01000000, 0, 0, 0, 1]);
         assert!(matches!(
-            LongHeaderPacket::decode(buf),
+            LongHeaderPacket::decode(buf, ()),
             Err(PacketError::InvalidPacketHeader)
         ));
     }
@@ -191,7 +193,7 @@ mod tests {
     fn test_returns_invalid_header_when_fixed_bit_not_set() {
         let buf = Bytes::from_static(&[0b10000000, 0, 0, 0, 1]);
         assert!(matches!(
-            LongHeaderPacket::decode(buf),
+            LongHeaderPacket::decode(buf, ()),
             Err(PacketError::InvalidPacketHeader)
         ));
     }
@@ -207,7 +209,7 @@ mod tests {
         buf.put(&[0u8; 10][..]);
 
         assert!(matches!(
-            LongHeaderPacket::decode(buf.freeze()),
+            LongHeaderPacket::decode(buf.freeze(), ()),
             Err(PacketError::BufferTooShort)
         ));
     }
@@ -224,7 +226,7 @@ mod tests {
         // No retry token, just 16-byte integrity tag
         buf.put(&[0xAA; 16][..]);
 
-        let packet = LongHeaderPacket::decode(buf.freeze()).unwrap();
+        let packet = LongHeaderPacket::decode(buf.freeze(), ()).unwrap();
         match packet {
             LongHeaderPacket::Retry {
                 version,
@@ -256,7 +258,7 @@ mod tests {
         buf.put(&b"my-retry-token"[..]); // 14-byte retry token
         buf.put(&[0xBB; 16][..]); // 16-byte integrity tag
 
-        let packet = LongHeaderPacket::decode(buf.freeze()).unwrap();
+        let packet = LongHeaderPacket::decode(buf.freeze(), ()).unwrap();
         match packet {
             LongHeaderPacket::Retry {
                 version,
@@ -285,7 +287,7 @@ mod tests {
         buf.put_u8(0x34);
         buf.put(&b"PIN"[..]);
 
-        let packet = LongHeaderPacket::decode(buf.freeze()).unwrap();
+        let packet = LongHeaderPacket::decode(buf.freeze(), ()).unwrap();
         match packet {
             LongHeaderPacket::Initial {
                 version,
@@ -310,7 +312,7 @@ mod tests {
     fn test_returns_invalid_header_when_header_is_not_0rtt() {
         let buf = Bytes::from_static(&[0b01000000, 0, 0, 0, 1]);
         assert!(matches!(
-            LongHeaderPacket::decode(buf),
+            LongHeaderPacket::decode(buf, ()),
             Err(PacketError::InvalidPacketHeader)
         ));
     }
@@ -328,7 +330,7 @@ mod tests {
         buf.put(&b"\x09\x0A"[..]);
         buf.put(&b"PING"[..]);
 
-        let packet = LongHeaderPacket::decode(buf.freeze()).unwrap();
+        let packet = LongHeaderPacket::decode(buf.freeze(), ()).unwrap();
         match packet {
             LongHeaderPacket::ZeroRtt {
                 version,
@@ -354,7 +356,7 @@ mod tests {
     fn test_returns_invalid_header_when_header_is_not_handshake() {
         let buf = Bytes::from_static(&[0b01000000, 0, 0, 0, 1]);
         assert!(matches!(
-            LongHeaderPacket::decode(buf),
+            LongHeaderPacket::decode(buf, ()),
             Err(PacketError::InvalidPacketHeader)
         ));
     }
@@ -372,7 +374,7 @@ mod tests {
         buf.put(&b"\x09\x0A"[..]);
         buf.put(&b"PING"[..]);
 
-        let packet = LongHeaderPacket::decode(buf.freeze()).unwrap();
+        let packet = LongHeaderPacket::decode(buf.freeze(), ()).unwrap();
         match packet {
             LongHeaderPacket::Handshake {
                 version,
