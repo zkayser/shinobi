@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-use super::PacketError;
+use super::{Decode, PacketError};
 use bytes::{Buf, Bytes};
 
 /// A 1-RTT Short Header packet per RFC 9000 Section 17.3.
@@ -15,8 +15,12 @@ const HEADER_FORM_BIT: u8 = 0x80;
 const FIXED_BIT: u8 = 0x40;
 const PACKET_NUMBER_LENGTH_MASK: u8 = 0x03;
 
-impl ShortHeaderPacket {
-    pub fn decode(mut buf: Bytes, dcid_len: usize) -> Result<Self, PacketError> {
+impl Decode for ShortHeaderPacket {
+    /// Destination connection ID length, which is not present on the wire for
+    /// short-header packets and must come from connection state (RFC 9000 §17.3).
+    type Context = usize;
+
+    fn decode(mut buf: Bytes, dcid_len: Self::Context) -> Result<Self, PacketError> {
         if buf.is_empty() {
             return Err(PacketError::BufferTooShort);
         }
